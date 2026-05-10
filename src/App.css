@@ -342,6 +342,42 @@ button:disabled {
   line-height: 1.4;
 }
 
+.hidden-input {
+  display: none;
+}
+
+.template-save {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.template-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.template-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 40px;
+  gap: 8px;
+}
+
+.template-item > button:first-child {
+  display: grid;
+  justify-content: start;
+  height: auto;
+  min-height: 48px;
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.template-item small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .summary-band {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -401,6 +437,42 @@ button:disabled {
   flex-wrap: wrap;
   padding: 14px 22px;
   border-bottom: 1px solid var(--line);
+}
+
+.insight-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding: 14px 22px;
+  border-bottom: 1px solid var(--line);
+}
+
+.insight-grid div {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 2px 8px;
+  align-items: center;
+  padding: 11px;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.insight-grid svg {
+  grid-row: span 2;
+  color: var(--accent);
+}
+
+.insight-grid strong {
+  color: var(--ink);
+  font-size: 18px;
+  line-height: 1.1;
+}
+
+.insight-grid span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .plan-meta span {
@@ -649,6 +721,31 @@ button:disabled {
   gap: 8px;
 }
 
+.search-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  background: var(--soft);
+  border-radius: 8px;
+}
+
+.search-row svg {
+  color: var(--muted);
+}
+
+.search-row input {
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.search-row input:focus {
+  box-shadow: none;
+}
+
 .history-list button {
   display: grid;
   justify-items: start;
@@ -710,6 +807,11 @@ button:disabled {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .insight-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: 12px 16px;
+  }
+
   .metric-row div {
     min-width: 0;
     padding: 10px 6px;
@@ -751,5 +853,11 @@ button:disabled {
   .key-row {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .template-save,
+  .sync-actions,
+  .insight-grid {
+    grid-template-columns: 1fr;
   }
 }

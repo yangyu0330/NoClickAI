@@ -1,4 +1,5 @@
 import {
+  Activity,
   AlertTriangle,
   Bell,
   CalendarDays,
@@ -6,22 +7,31 @@ import {
   ChevronRight,
   Cloud,
   Clock3,
+  Database,
   Download,
   FileText,
+  FileUp,
   KeyRound,
   Laptop,
   ListChecks,
   Loader2,
   Lock,
   MessageSquareText,
+  Plus,
   Play,
   RefreshCcw,
+  Search,
   ShieldCheck,
+  Sparkles,
   Smartphone,
+  Trash2,
   Upload,
   Users,
+  Wifi,
+  WifiOff,
+  Zap,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 
 type Risk = 'low' | 'medium' | 'high' | 'blocked'
@@ -58,6 +68,9 @@ type AutomationPlan = {
   steps: PlanStep[]
   logs: string[]
   phase: RunPhase
+  createdAt?: string
+  source?: 'rules' | 'ai'
+  tags?: string[]
 }
 
 type SyncConfig = {
@@ -74,12 +87,71 @@ type SyncSnapshot = {
   providers: Provider[]
   activePlan: AutomationPlan
   history: AutomationPlan[]
+  templates: TaskTemplate[]
+}
+
+type TaskTemplate = {
+  id: string
+  name: string
+  prompt: string
+  category: string
+}
+
+type ExportSnapshot = SyncSnapshot & {
+  exportedAt: string
+  product: 'NoClick AI'
+}
+
+type SyncHealth = 'unknown' | 'online' | 'offline'
+
+type AiPlanPayload = {
+  title: string
+  category: string
+  dueLabel: string
+  clickSavings: number
+  timeSavings: number
+  apps: string[]
+  summary: string
+  steps: Array<{
+    title: string
+    app: string
+    detail: string
+    preview: string
+    risk: Risk
+  }>
 }
 
 const EXAMPLES = [
   '다음주 수요일 4시까지 계획서 제출',
   '다음주 목요일 9시까지 통합회의',
   '이번주 수요일까지 팀원들에게 내가 부여한 과제를 모두 해오도록 다시 공지',
+]
+
+const DEFAULT_TEMPLATES: TaskTemplate[] = [
+  {
+    id: 'template-submit',
+    name: '과제/계획서 제출',
+    prompt: '다음주 수요일 4시까지 계획서 제출 준비하고 마감 리마인더 등록해줘',
+    category: '제출 자동화',
+  },
+  {
+    id: 'template-meeting',
+    name: '통합회의 조율',
+    prompt: '다음주 목요일 9시까지 통합회의 잡고 참석자에게 초대 초안 만들어줘',
+    category: '회의 자동 조율',
+  },
+  {
+    id: 'template-remind',
+    name: '팀 과제 재공지',
+    prompt: '이번주 수요일까지 팀원들에게 내가 부여한 과제를 모두 해오도록 다시 공지',
+    category: '공지 자동화',
+  },
+  {
+    id: 'template-expense',
+    name: '정산 준비',
+    prompt: '이번주 영수증을 모아서 정산표 초안 만들고 제출 전 승인 요청해줘',
+    category: '정산 준비',
+  },
 ]
 
 const INITIAL_PROVIDERS: Provider[] = [
@@ -124,6 +196,8 @@ const STORAGE_KEYS = {
   activePlan: 'noclickai.activePlan',
   history: 'noclickai.history',
   syncConfig: 'noclickai.syncConfig',
+  templates: 'noclickai.templates',
+  autoSync: 'noclickai.autoSync',
 }
 
 const DEFAULT_SYNC_CONFIG: SyncConfig = {
@@ -446,6 +520,49 @@ function buildPlan(prompt: string): AutomationPlan {
   }
 }
 
+function enrichPlan(plan: AutomationPlan, source: 'rules' | 'ai' = plan.source ?? 'rules'): AutomationPlan {
+  return {
+    ...plan,
+    createdAt: plan.createdAt ?? new Date().toISOString(),
+    source,
+    tags: plan.tags ?? [plan.category, ...plan.apps.slice(0, 3)],
+  }
+}
+
+function buildAiPlan(prompt: string, payload: AiPlanPayload): AutomationPlan {
+  const { date } = resolveDateTime(prompt)
+  return enrichPlan(
+    {
+      id: crypto.randomUUID(),
+      prompt,
+      title: payload.title,
+      category: payload.category,
+      dueLabel: payload.dueLabel,
+      dueIso: date.toISOString(),
+      clickSavings: Math.max(0, Math.round(payload.clickSavings)),
+      timeSavings: Math.max(0, Math.round(payload.timeSavings)),
+      apps: payload.apps.slice(0, 6),
+      phase: 'approval',
+      logs: ['AI 플래너가 실제 업무 흐름을 생성했습니다.', payload.summary],
+      steps: payload.steps.map((step, index) =>
+        createStep(
+          `ai-step-${index + 1}`,
+          step.title,
+          step.app,
+          step.detail,
+          step.preview,
+          step.risk,
+        ),
+      ),
+    },
+    'ai',
+  )
+}
+
+function normalizePlan(plan: AutomationPlan) {
+  return enrichPlan(plan, plan.source ?? 'rules')
+}
+
 function riskIcon(risk: Risk) {
   if (risk === 'low') return <ShieldCheck size={16} />
   if (risk === 'medium') return <CheckCircle2 size={16} />
@@ -461,15 +578,25 @@ function App() {
     readJsonStorage<Provider[]>(STORAGE_KEYS.providers, INITIAL_PROVIDERS),
   )
   const [activePlan, setActivePlan] = useState<AutomationPlan>(() =>
-    readJsonStorage<AutomationPlan>(STORAGE_KEYS.activePlan, buildPlan(EXAMPLES[0])),
+    normalizePlan(readJsonStorage<AutomationPlan>(STORAGE_KEYS.activePlan, enrichPlan(buildPlan(EXAMPLES[0])))),
   )
   const [history, setHistory] = useState<AutomationPlan[]>(() =>
-    readJsonStorage<AutomationPlan[]>(STORAGE_KEYS.history, []),
+    readJsonStorage<AutomationPlan[]>(STORAGE_KEYS.history, []).map(normalizePlan),
   )
   const [syncConfig, setSyncConfig] = useState<SyncConfig>(() =>
     readJsonStorage<SyncConfig>(STORAGE_KEYS.syncConfig, DEFAULT_SYNC_CONFIG),
   )
+  const [templates, setTemplates] = useState<TaskTemplate[]>(() =>
+    readJsonStorage<TaskTemplate[]>(STORAGE_KEYS.templates, DEFAULT_TEMPLATES),
+  )
+  const [autoSync, setAutoSync] = useState(() => readJsonStorage<boolean>(STORAGE_KEYS.autoSync, false))
+  const [historyQuery, setHistoryQuery] = useState('')
+  const [templateName, setTemplateName] = useState('')
   const [syncStatus, setSyncStatus] = useState('동기화 서버 연결 전')
+  const [syncHealth, setSyncHealth] = useState<SyncHealth>('unknown')
+  const [plannerStatus, setPlannerStatus] = useState('규칙 기반 플래너 준비됨')
+  const [isGeneratingPlan, setIsGeneratingPlan] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEYS.prompt, prompt)
@@ -490,6 +617,50 @@ function App() {
   useEffect(() => {
     writeJsonStorage(STORAGE_KEYS.syncConfig, syncConfig)
   }, [syncConfig])
+
+  useEffect(() => {
+    writeJsonStorage(STORAGE_KEYS.templates, templates)
+  }, [templates])
+
+  useEffect(() => {
+    writeJsonStorage(STORAGE_KEYS.autoSync, autoSync)
+  }, [autoSync])
+
+  useEffect(() => {
+    if (!autoSync) return
+    if (!syncConfig.endpoint.trim() || !syncConfig.workspaceId.trim() || !syncConfig.token.trim()) return
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await fetch(`${normalizeEndpoint(syncConfig.endpoint)}/v1/state`, {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${syncConfig.token}`,
+            'Content-Type': 'application/json',
+            'X-Workspace-Id': syncConfig.workspaceId,
+          },
+          body: JSON.stringify({
+            version: 1,
+            updatedAt: new Date().toISOString(),
+            deviceName: syncConfig.deviceName,
+            providers,
+            activePlan,
+            history,
+            templates,
+          } satisfies SyncSnapshot),
+        })
+
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        setSyncStatus(`자동 동기화 완료: ${new Date().toLocaleTimeString('ko-KR')}`)
+        setSyncHealth('online')
+      } catch (error) {
+        setSyncStatus(`자동 동기화 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`)
+        setSyncHealth('offline')
+      }
+    }, 1800)
+
+    return () => window.clearTimeout(timer)
+  }, [activePlan, autoSync, history, providers, syncConfig, templates])
 
   useEffect(() => {
     if (activePlan.phase !== 'running') return
@@ -556,6 +727,28 @@ function App() {
 
   const progress = Math.round((completedCount / activePlan.steps.length) * 100)
 
+  const businessMetrics = useMemo(() => {
+    const completedPlans = history.filter((item) => item.phase === 'complete')
+    return {
+      totalRuns: history.length,
+      completedRuns: completedPlans.length,
+      savedMinutes: history.reduce((sum, item) => sum + item.timeSavings, activePlan.timeSavings),
+      savedClicks: history.reduce((sum, item) => sum + item.clickSavings, activePlan.clickSavings),
+      highRiskSteps: activePlan.steps.filter((step) => step.risk === 'high' || step.risk === 'blocked').length,
+    }
+  }, [activePlan, history])
+
+  const filteredHistory = useMemo(() => {
+    const query = historyQuery.trim().toLowerCase()
+    if (!query) return history
+    return history.filter((item) =>
+      [item.title, item.prompt, item.category, item.dueLabel, ...(item.tags ?? [])]
+        .join(' ')
+        .toLowerCase()
+        .includes(query),
+    )
+  }, [history, historyQuery])
+
   const saveApiKey = () => {
     if (apiKey.trim()) {
       window.localStorage.setItem(STORAGE_KEYS.apiKey, apiKey.trim())
@@ -569,10 +762,48 @@ function App() {
     setApiKeySaved(false)
   }
 
-  const generatePlan = (nextPrompt = prompt) => {
-    const plan = buildPlan(nextPrompt)
+  const createRemoteAiPlan = async (nextPrompt: string) => {
+    const response = await fetch(`${normalizeEndpoint(syncConfig.endpoint)}/v1/plan`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${syncConfig.token}`,
+        'Content-Type': 'application/json',
+        'X-OpenAI-Key': apiKey.trim(),
+        'X-Workspace-Id': syncConfig.workspaceId,
+      },
+      body: JSON.stringify({
+        prompt: nextPrompt,
+        localeNow: new Date().toLocaleString('ko-KR'),
+      }),
+    })
+
+    const body = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(body.detail || body.error || `HTTP ${response.status}`)
+    return buildAiPlan(nextPrompt, body.plan as AiPlanPayload)
+  }
+
+  const generatePlan = async (nextPrompt = prompt) => {
+    setIsGeneratingPlan(true)
+    setPrompt(nextPrompt)
+
+    let plan: AutomationPlan
+    try {
+      if (apiKey.trim() && !assertSyncReady()) {
+        setPlannerStatus('AI 플래너 생성 중...')
+        plan = await createRemoteAiPlan(nextPrompt)
+        setPlannerStatus('AI 플래너 사용됨')
+      } else {
+        plan = enrichPlan(buildPlan(nextPrompt), 'rules')
+        setPlannerStatus(apiKey.trim() ? 'Sync 설정이 없어 규칙 기반으로 생성됨' : '규칙 기반 플래너 사용됨')
+      }
+    } catch (error) {
+      plan = enrichPlan(buildPlan(nextPrompt), 'rules')
+      setPlannerStatus(`AI 실패, 규칙 기반으로 대체: ${error instanceof Error ? error.message : '알 수 없는 오류'}`)
+    }
+
     setPrompt(nextPrompt)
     setActivePlan(plan)
+    setIsGeneratingPlan(false)
   }
 
   const approveStep = (stepId: string) => {
@@ -608,7 +839,7 @@ function App() {
     setActivePlan((plan) => ({
       ...plan,
       phase: 'running',
-      logs: [...plan.logs, '승인된 자동 실행을 시작합니다. 외부 API는 데모 모드로 시뮬레이션합니다.'],
+      logs: [...plan.logs, '승인된 자동 실행을 시작합니다. 연결된 커넥터는 안전 정책에 따라 실행됩니다.'],
     }))
   }
 
@@ -621,7 +852,7 @@ function App() {
   }
 
   const resetPlan = () => {
-    setActivePlan(buildPlan(prompt))
+    setActivePlan(enrichPlan(buildPlan(prompt), 'rules'))
   }
 
   const toggleProvider = (id: string) => {
@@ -643,6 +874,7 @@ function App() {
     providers,
     activePlan,
     history,
+    templates,
   })
 
   const assertSyncReady = () => {
@@ -704,11 +936,80 @@ function App() {
       if (!response.ok) throw new Error(`HTTP ${response.status}`)
       const snapshot = (await response.json()) as SyncSnapshot
       setProviders(snapshot.providers ?? INITIAL_PROVIDERS)
-      setActivePlan(snapshot.activePlan ?? buildPlan(EXAMPLES[0]))
-      setHistory(snapshot.history ?? [])
+      setActivePlan(snapshot.activePlan ? normalizePlan(snapshot.activePlan) : enrichPlan(buildPlan(EXAMPLES[0])))
+      setHistory((snapshot.history ?? []).map(normalizePlan))
+      if (snapshot.templates?.length) setTemplates(snapshot.templates)
       setSyncStatus(`가져오기 완료: ${snapshot.deviceName} / ${new Date(snapshot.updatedAt).toLocaleString('ko-KR')}`)
     } catch (error) {
       setSyncStatus(`가져오기 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`)
+    }
+  }
+
+  const checkServerHealth = async () => {
+    if (!syncConfig.endpoint.trim()) {
+      setSyncHealth('offline')
+      setSyncStatus('Sync 서버 주소가 필요합니다.')
+      return
+    }
+
+    try {
+      const response = await fetch(`${normalizeEndpoint(syncConfig.endpoint)}/health`)
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      const body = await response.json()
+      setSyncHealth('online')
+      setSyncStatus(`서버 정상: ${body.service} / AI 플래너 ${body.aiPlanner ? '가능' : '비활성'}`)
+    } catch (error) {
+      setSyncHealth('offline')
+      setSyncStatus(`서버 연결 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`)
+    }
+  }
+
+  const addTemplate = () => {
+    const name = templateName.trim() || activePlan.title
+    const nextTemplate: TaskTemplate = {
+      id: crypto.randomUUID(),
+      name,
+      prompt,
+      category: activePlan.category,
+    }
+    setTemplates((items) => [nextTemplate, ...items].slice(0, 12))
+    setTemplateName('')
+  }
+
+  const deleteTemplate = (id: string) => {
+    setTemplates((items) => items.filter((item) => item.id !== id))
+  }
+
+  const applyTemplate = (template: TaskTemplate) => {
+    void generatePlan(template.prompt)
+  }
+
+  const exportData = () => {
+    const snapshot: ExportSnapshot = {
+      ...buildSyncSnapshot(),
+      product: 'NoClick AI',
+      exportedAt: new Date().toISOString(),
+    }
+    const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `noclick-ai-backup-${new Date().toISOString().slice(0, 10)}.json`
+    anchor.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const importData = async (file: File | undefined) => {
+    if (!file) return
+    try {
+      const snapshot = JSON.parse(await file.text()) as Partial<ExportSnapshot>
+      if (snapshot.providers) setProviders(snapshot.providers)
+      if (snapshot.activePlan) setActivePlan(normalizePlan(snapshot.activePlan))
+      if (snapshot.history) setHistory(snapshot.history.map(normalizePlan))
+      if (snapshot.templates) setTemplates(snapshot.templates)
+      setSyncStatus('백업 파일을 가져왔습니다.')
+    } catch (error) {
+      setSyncStatus(`가져오기 실패: ${error instanceof Error ? error.message : '잘못된 백업 파일'}`)
     }
   }
 
@@ -721,7 +1022,7 @@ function App() {
           </div>
           <div>
             <h1>NoClick AI</h1>
-            <p>목적 입력형 자동 실행 MVP</p>
+            <p>AI 목적 실행 제품</p>
           </div>
         </div>
         <div className="device-strip" aria-label="지원 환경">
@@ -750,12 +1051,14 @@ function App() {
               rows={5}
               aria-label="자연어 목적 입력"
             />
-            <button className="primary-button" type="button" onClick={() => generatePlan()}>
-              <Play size={18} /> 계획 생성
+            <button className="primary-button" type="button" onClick={() => void generatePlan()} disabled={isGeneratingPlan}>
+              {isGeneratingPlan ? <Loader2 size={18} className="spin" /> : <Sparkles size={18} />}
+              {isGeneratingPlan ? '계획 생성 중' : apiKeySaved ? 'AI 계획 생성' : '계획 생성'}
             </button>
+            <p className="sync-status">{plannerStatus}</p>
             <div className="example-grid">
               {EXAMPLES.map((example) => (
-                <button type="button" key={example} onClick={() => generatePlan(example)}>
+                <button type="button" key={example} onClick={() => void generatePlan(example)}>
                   {example}
                 </button>
               ))}
@@ -784,7 +1087,7 @@ function App() {
             </div>
             <div className="status-line">
               <span className={apiKeySaved ? 'dot connected' : 'dot'} />
-              {apiKeySaved ? '로컬 브라우저에 저장됨' : '데모 플래너 사용 중'}
+              {apiKeySaved ? 'AI 플래너 준비됨. 키는 이 기기에만 저장됨' : '키 없이 규칙 기반 플래너 사용'}
               {apiKeySaved && (
                 <button type="button" className="link-button" onClick={clearApiKey}>
                   삭제
@@ -818,6 +1121,37 @@ function App() {
 
           <div className="panel-block compact">
             <div className="section-title">
+              <Zap size={18} />
+              <h2>자동화 템플릿</h2>
+            </div>
+            <div className="template-save">
+              <input
+                value={templateName}
+                onChange={(event) => setTemplateName(event.target.value)}
+                aria-label="템플릿 이름"
+                placeholder="템플릿 이름"
+              />
+              <button type="button" onClick={addTemplate}>
+                <Plus size={16} /> 저장
+              </button>
+            </div>
+            <div className="template-list">
+              {templates.map((template) => (
+                <div className="template-item" key={template.id}>
+                  <button type="button" onClick={() => applyTemplate(template)}>
+                    <strong>{template.name}</strong>
+                    <small>{template.category}</small>
+                  </button>
+                  <button type="button" aria-label={`${template.name} 삭제`} onClick={() => deleteTemplate(template.id)}>
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="panel-block compact">
+            <div className="section-title">
               <Cloud size={18} />
               <h2>기기 연동</h2>
             </div>
@@ -826,7 +1160,7 @@ function App() {
                 value={syncConfig.endpoint}
                 onChange={(event) => updateSyncConfig({ endpoint: event.target.value })}
                 aria-label="Sync 서버 주소"
-                placeholder="http://127.0.0.1:8787"
+                placeholder="http://127.0.0.1:8788"
               />
               <input
                 value={syncConfig.workspaceId}
@@ -855,7 +1189,26 @@ function App() {
               <button type="button" onClick={pushSync}>
                 <Upload size={16} /> 업로드
               </button>
+              <button type="button" onClick={checkServerHealth}>
+                {syncHealth === 'online' ? <Wifi size={16} /> : <WifiOff size={16} />} 상태 점검
+              </button>
+              <button type="button" onClick={() => setAutoSync((value) => !value)}>
+                <Cloud size={16} /> {autoSync ? '자동 켜짐' : '자동 꺼짐'}
+              </button>
+              <button type="button" onClick={exportData}>
+                <Database size={16} /> 백업
+              </button>
+              <button type="button" onClick={() => fileInputRef.current?.click()}>
+                <FileUp size={16} /> 복원
+              </button>
             </div>
+            <input
+              ref={fileInputRef}
+              className="hidden-input"
+              type="file"
+              accept="application/json"
+              onChange={(event) => void importData(event.target.files?.[0])}
+            />
             <p className="sync-status">{syncStatus}</p>
           </div>
         </aside>
@@ -893,6 +1246,32 @@ function App() {
             <span>
               <ShieldCheck size={16} /> 위험도별 승인
             </span>
+            <span>
+              <Sparkles size={16} /> {activePlan.source === 'ai' ? 'AI 플래너' : '규칙 플래너'}
+            </span>
+          </div>
+
+          <div className="insight-grid" aria-label="제품 성과 지표">
+            <div>
+              <Activity size={18} />
+              <strong>{businessMetrics.completedRuns}/{businessMetrics.totalRuns}</strong>
+              <span>완료 실행</span>
+            </div>
+            <div>
+              <Clock3 size={18} />
+              <strong>{businessMetrics.savedMinutes}분</strong>
+              <span>누적 절감</span>
+            </div>
+            <div>
+              <Zap size={18} />
+              <strong>{businessMetrics.savedClicks}</strong>
+              <span>누적 클릭 절감</span>
+            </div>
+            <div>
+              <AlertTriangle size={18} />
+              <strong>{businessMetrics.highRiskSteps}</strong>
+              <span>고위험 승인 항목</span>
+            </div>
           </div>
 
           <div className="timeline" aria-label="실행 단계">
@@ -983,14 +1362,25 @@ function App() {
               <Users size={18} />
               <h2>히스토리</h2>
             </div>
+            <div className="search-row">
+              <Search size={16} />
+              <input
+                value={historyQuery}
+                onChange={(event) => setHistoryQuery(event.target.value)}
+                aria-label="히스토리 검색"
+                placeholder="목적, 앱, 태그 검색"
+              />
+            </div>
             {history.length === 0 ? (
               <p className="empty-text">완료된 실행이 없습니다.</p>
             ) : (
               <div className="history-list">
-                {history.map((item) => (
+                {filteredHistory.map((item) => (
                   <button type="button" key={item.id} onClick={() => setActivePlan(item)}>
                     <strong>{item.title}</strong>
-                    <span>{item.dueLabel}</span>
+                    <span>
+                      {item.dueLabel} · {item.source === 'ai' ? 'AI' : '규칙'}
+                    </span>
                   </button>
                 ))}
               </div>

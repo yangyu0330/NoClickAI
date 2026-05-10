@@ -8,6 +8,8 @@
 - 로컬 저장/복원으로 앱 재실행 후에도 작업 상태 유지
 - Sync 서버로 여러 기기 간 히스토리, 연결 상태, 현재 계획 동기화
 - 개인 API Key는 기기 로컬에만 저장하고 Sync 대상에서 제외
+- AI 플래너는 서버 프록시를 통해 OpenAI Responses API를 호출하고 실패 시 규칙 기반 플래너로 대체
+- 자동화 템플릿, 히스토리 검색, JSON 백업/복원, 제품 성과 지표 포함
 - 위험도별 승인 정책으로 메시지 발송, 일정 등록, 제출 폼 입력을 자동 실행 전에 차단
 - Android 네이티브 프로젝트와 Windows 설치 파일 빌드 파이프라인 제공
 
@@ -17,6 +19,7 @@
    - 예: Vercel Functions, Fly.io, Render, AWS Lightsail, Cloud Run
    - `NOCLICK_SYNC_TOKEN`은 최소 32바이트 이상 랜덤 문자열 사용
    - 운영에서는 `dev-sync-token` 사용 금지
+   - `NOCLICK_ALLOWED_ORIGIN`으로 제품 도메인만 CORS 허용
 
 2. 사용자 인증
    - OAuth 로그인 또는 패스키 기반 사용자 계정
@@ -25,6 +28,7 @@
 3. 실제 앱 어댑터
    - Google Calendar, Gmail, Notion, Slack, Discord API는 서버에서 OAuth 토큰으로 실행
    - 데스크톱 Browser Agent는 Playwright 실행 권한과 사용자 승인 로그 필요
+   - OpenAI API Key는 장기 저장하지 않고 사용자가 선택한 개인 키 또는 결제 계정과 분리
 
 4. 감사 로그
    - 실행 계획, 승인자, 실행 시각, 대상 앱, 되돌리기 가능 여부를 서버에 저장
@@ -43,6 +47,7 @@ Sync 대상:
 - 작업 히스토리
 - OAuth 연결 상태 표시값
 - 현재 실행 계획
+- 자동화 템플릿
 - 기기 이름과 마지막 업데이트 시각
 
 Sync 제외:

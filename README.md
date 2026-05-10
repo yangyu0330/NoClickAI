@@ -13,10 +13,14 @@ NoClick AI는 자연어 목적 입력으로 실행 계획, 위험도별 승인, 
 - 자연어 목적 입력과 대표 예시 3개
 - AI 실행 계획 카드: 목표, 마감일, 필요한 앱, 단계, 위험도
 - 개인 API Key 입력: 코드에 하드코딩하지 않고 로컬 기기에만 저장
+- 개인 API Key 기반 AI 플래너: Sync 서버의 `/v1/plan` 프록시를 통해 OpenAI Responses API 호출, 실패 시 규칙 기반 플래너로 자동 대체
 - OAuth 연결 상태 관리: Google Calendar, Gmail, Notion, Slack, Discord, Browser Agent
 - 위험도별 승인 정책: 낮음, 승인, 개별 승인, 차단
-- 실행 로그, 완료 히스토리, 로컬 저장/복원
-- Sync 서버 연동: Android 앱, 데스크톱 프로그램, 웹앱 사이에서 작업 상태 동기화
+- 실행 로그, 완료 히스토리, 히스토리 검색, 로컬 저장/복원
+- 자동화 템플릿 저장/삭제/실행
+- 백업/복원: JSON 내보내기와 가져오기
+- Sync 서버 연동: Android 앱, 데스크톱 프로그램, 웹앱 사이에서 작업 상태와 템플릿 동기화
+- 제품 성과 지표: 누적 절감 시간, 절감 클릭 수, 완료 실행 수, 고위험 승인 항목
 
 ## 빠른 실행
 
@@ -30,6 +34,8 @@ npm run dev:full
 - 개발용 Sync 토큰: `dev-sync-token`
 
 앱의 `기기 연동` 패널에서 서버 주소, 워크스페이스 ID, Sync 토큰을 입력한 뒤 `업로드`와 `가져오기`로 연동합니다. 개인 API Key는 보안상 동기화하지 않습니다.
+
+AI 플래너를 쓰려면 개인 API Key를 저장하고 Sync 서버 설정을 완료한 뒤 `AI 계획 생성`을 누릅니다. 서버는 API Key를 저장하지 않고 요청 1회에만 사용합니다.
 
 ## 빌드와 검증
 
@@ -47,7 +53,7 @@ npm run android:open
 
 `android/` 폴더가 Capacitor 네이티브 앱 프로젝트입니다. Android Studio에서 열어 APK/AAB를 빌드할 수 있습니다.
 
-APK/AAB 빌드에는 JDK 21과 Android SDK가 필요합니다. 이 PC에는 JDK와 Android Studio를 설치했지만, Android SDK는 Android Studio 첫 실행 설정에서 설치해야 합니다.
+APK/AAB 빌드에는 JDK 21과 Android SDK가 필요합니다. 이 PC에는 JDK 21, Android Studio, Android SDK Platform 36, Build Tools가 설치되어 있고 `assembleDebug` 검증이 완료되었습니다.
 
 실기기에서 로컬 Sync 서버를 쓰려면 `127.0.0.1` 대신 컴퓨터의 LAN IP 또는 HTTPS 배포 주소를 입력해야 합니다. 상용 배포에서는 반드시 HTTPS Sync 서버를 사용하세요.
 
@@ -72,8 +78,11 @@ API:
 - `GET /health`
 - `GET /v1/state?workspaceId=...`
 - `PUT /v1/state`
+- `POST /v1/plan`
 
 요청에는 `Authorization: Bearer <NOCLICK_SYNC_TOKEN>`이 필요합니다. 서버 데이터는 기본적으로 `server/data/workspaces.json`에 저장되며, 이 폴더는 Git에 포함하지 않습니다.
+
+`POST /v1/plan`은 추가로 `X-OpenAI-Key` 헤더를 사용합니다. 이 값은 서버에 저장하지 않습니다.
 
 ## 데모 시나리오
 
