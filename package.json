@@ -2,30 +2,68 @@
   "name": "noclickai",
   "private": true,
   "version": "0.0.0",
+  "description": "NoClick AI cross-platform automation assistant with Android, desktop, PWA, and sync support.",
+  "author": "NoClick AI",
+  "license": "UNLICENSED",
   "type": "module",
+  "main": "electron/main.cjs",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host 0.0.0.0",
+    "dev:web": "vite --host 0.0.0.0",
+    "sync:server": "node server/sync-server.mjs",
+    "dev:full": "concurrently -n web,sync \"npm:dev:web\" \"npm:sync:server\"",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "desktop:dev": "npm run build && electron .",
+    "desktop:dist": "npm run build && electron-builder",
+    "android:sync": "npm run build && cap sync android",
+    "android:open": "cap open android"
   },
   "dependencies": {
+    "@capacitor/android": "^8.3.3",
+    "@capacitor/core": "^8.3.3",
     "lucide-react": "^1.14.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.3.3",
     "@eslint/js": "^10.0.1",
     "@types/node": "^24.12.2",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
+    "concurrently": "^9.2.1",
+    "electron": "^42.0.1",
+    "electron-builder": "^26.8.1",
     "eslint": "^10.2.1",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.5.0",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.58.2",
-    "vite": "^8.0.10"
+    "vite": "^8.0.10",
+    "wait-on": "^9.0.5"
+  },
+  "build": {
+    "appId": "com.noclickai.desktop",
+    "productName": "NoClick AI",
+    "icon": "build/icon.ico",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }

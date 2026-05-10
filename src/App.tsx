@@ -4,9 +4,12 @@ import {
   CalendarDays,
   CheckCircle2,
   ChevronRight,
+  Cloud,
   Clock3,
+  Download,
   FileText,
   KeyRound,
+  Laptop,
   ListChecks,
   Loader2,
   Lock,
@@ -15,7 +18,7 @@ import {
   RefreshCcw,
   ShieldCheck,
   Smartphone,
-  Square,
+  Upload,
   Users,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
@@ -55,6 +58,22 @@ type AutomationPlan = {
   steps: PlanStep[]
   logs: string[]
   phase: RunPhase
+}
+
+type SyncConfig = {
+  endpoint: string
+  workspaceId: string
+  token: string
+  deviceName: string
+}
+
+type SyncSnapshot = {
+  version: number
+  updatedAt: string
+  deviceName: string
+  providers: Provider[]
+  activePlan: AutomationPlan
+  history: AutomationPlan[]
 }
 
 const EXAMPLES = [
@@ -98,9 +117,45 @@ const STATUS_LABEL: Record<StepStatus, string> = {
   blocked: '지원 안 함',
 }
 
+const STORAGE_KEYS = {
+  apiKey: 'noclickai.apiKey',
+  prompt: 'noclickai.prompt',
+  providers: 'noclickai.providers',
+  activePlan: 'noclickai.activePlan',
+  history: 'noclickai.history',
+  syncConfig: 'noclickai.syncConfig',
+}
+
+const DEFAULT_SYNC_CONFIG: SyncConfig = {
+  endpoint: 'http://127.0.0.1:8788',
+  workspaceId: 'noclick-team',
+  token: '',
+  deviceName: typeof navigator === 'undefined' ? 'NoClick Device' : navigator.platform || 'NoClick Device',
+}
+
 const readStoredApiKey = () => {
   if (typeof window === 'undefined') return ''
-  return window.localStorage.getItem('noclickai.apiKey') ?? ''
+  return window.localStorage.getItem(STORAGE_KEYS.apiKey) ?? ''
+}
+
+function readJsonStorage<T>(key: string, fallback: T): T {
+  if (typeof window === 'undefined') return fallback
+
+  try {
+    const raw = window.localStorage.getItem(key)
+    return raw ? (JSON.parse(raw) as T) : fallback
+  } catch {
+    return fallback
+  }
+}
+
+function writeJsonStorage(key: string, value: unknown) {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(key, JSON.stringify(value))
+}
+
+function normalizeEndpoint(endpoint: string) {
+  return endpoint.trim().replace(/\/+$/, '')
 }
 
 const formatKoreanDateTime = (date: Date) =>
@@ -399,12 +454,42 @@ function riskIcon(risk: Risk) {
 }
 
 function App() {
-  const [prompt, setPrompt] = useState(EXAMPLES[0])
+  const [prompt, setPrompt] = useState(() => window.localStorage.getItem(STORAGE_KEYS.prompt) ?? EXAMPLES[0])
   const [apiKey, setApiKey] = useState(readStoredApiKey)
   const [apiKeySaved, setApiKeySaved] = useState(() => readStoredApiKey().length > 0)
-  const [providers, setProviders] = useState(INITIAL_PROVIDERS)
-  const [activePlan, setActivePlan] = useState<AutomationPlan>(() => buildPlan(EXAMPLES[0]))
-  const [history, setHistory] = useState<AutomationPlan[]>([])
+  const [providers, setProviders] = useState(() =>
+    readJsonStorage<Provider[]>(STORAGE_KEYS.providers, INITIAL_PROVIDERS),
+  )
+  const [activePlan, setActivePlan] = useState<AutomationPlan>(() =>
+    readJsonStorage<AutomationPlan>(STORAGE_KEYS.activePlan, buildPlan(EXAMPLES[0])),
+  )
+  const [history, setHistory] = useState<AutomationPlan[]>(() =>
+    readJsonStorage<AutomationPlan[]>(STORAGE_KEYS.history, []),
+  )
+  const [syncConfig, setSyncConfig] = useState<SyncConfig>(() =>
+    readJsonStorage<SyncConfig>(STORAGE_KEYS.syncConfig, DEFAULT_SYNC_CONFIG),
+  )
+  const [syncStatus, setSyncStatus] = useState('동기화 서버 연결 전')
+
+  useEffect(() => {
+    window.localStorage.setItem(STORAGE_KEYS.prompt, prompt)
+  }, [prompt])
+
+  useEffect(() => {
+    writeJsonStorage(STORAGE_KEYS.providers, providers)
+  }, [providers])
+
+  useEffect(() => {
+    writeJsonStorage(STORAGE_KEYS.activePlan, activePlan)
+  }, [activePlan])
+
+  useEffect(() => {
+    writeJsonStorage(STORAGE_KEYS.history, history)
+  }, [history])
+
+  useEffect(() => {
+    writeJsonStorage(STORAGE_KEYS.syncConfig, syncConfig)
+  }, [syncConfig])
 
   useEffect(() => {
     if (activePlan.phase !== 'running') return
@@ -473,13 +558,13 @@ function App() {
 
   const saveApiKey = () => {
     if (apiKey.trim()) {
-      window.localStorage.setItem('noclickai.apiKey', apiKey.trim())
+      window.localStorage.setItem(STORAGE_KEYS.apiKey, apiKey.trim())
       setApiKeySaved(true)
     }
   }
 
   const clearApiKey = () => {
-    window.localStorage.removeItem('noclickai.apiKey')
+    window.localStorage.removeItem(STORAGE_KEYS.apiKey)
     setApiKey('')
     setApiKeySaved(false)
   }
@@ -547,6 +632,86 @@ function App() {
     )
   }
 
+  const updateSyncConfig = (patch: Partial<SyncConfig>) => {
+    setSyncConfig((current) => ({ ...current, ...patch }))
+  }
+
+  const buildSyncSnapshot = (): SyncSnapshot => ({
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    deviceName: syncConfig.deviceName,
+    providers,
+    activePlan,
+    history,
+  })
+
+  const assertSyncReady = () => {
+    if (!syncConfig.endpoint.trim()) return 'Sync 서버 주소가 필요합니다.'
+    if (!syncConfig.workspaceId.trim()) return '워크스페이스 ID가 필요합니다.'
+    if (!syncConfig.token.trim()) return 'Sync 토큰이 필요합니다.'
+    return ''
+  }
+
+  const pushSync = async () => {
+    const error = assertSyncReady()
+    if (error) {
+      setSyncStatus(error)
+      return
+    }
+
+    setSyncStatus('서버로 업로드 중...')
+    try {
+      const response = await fetch(`${normalizeEndpoint(syncConfig.endpoint)}/v1/state`, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${syncConfig.token}`,
+          'Content-Type': 'application/json',
+          'X-Workspace-Id': syncConfig.workspaceId,
+        },
+        body: JSON.stringify(buildSyncSnapshot()),
+      })
+
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      setSyncStatus(`업로드 완료: ${new Date().toLocaleTimeString('ko-KR')}`)
+    } catch (error) {
+      setSyncStatus(`업로드 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`)
+    }
+  }
+
+  const pullSync = async () => {
+    const error = assertSyncReady()
+    if (error) {
+      setSyncStatus(error)
+      return
+    }
+
+    setSyncStatus('서버에서 가져오는 중...')
+    try {
+      const response = await fetch(
+        `${normalizeEndpoint(syncConfig.endpoint)}/v1/state?workspaceId=${encodeURIComponent(syncConfig.workspaceId)}`,
+        {
+          headers: {
+            Authorization: `Bearer ${syncConfig.token}`,
+          },
+        },
+      )
+
+      if (response.status === 404) {
+        setSyncStatus('서버에 저장된 상태가 없습니다. 먼저 업로드하세요.')
+        return
+      }
+
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      const snapshot = (await response.json()) as SyncSnapshot
+      setProviders(snapshot.providers ?? INITIAL_PROVIDERS)
+      setActivePlan(snapshot.activePlan ?? buildPlan(EXAMPLES[0]))
+      setHistory(snapshot.history ?? [])
+      setSyncStatus(`가져오기 완료: ${snapshot.deviceName} / ${new Date(snapshot.updatedAt).toLocaleString('ko-KR')}`)
+    } catch (error) {
+      setSyncStatus(`가져오기 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`)
+    }
+  }
+
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -564,7 +729,10 @@ function App() {
             <Smartphone size={16} /> Android
           </span>
           <span>
-            <Square size={16} /> Desktop
+            <Laptop size={16} /> Desktop App
+          </span>
+          <span>
+            <Cloud size={16} /> Sync
           </span>
         </div>
       </header>
@@ -646,6 +814,49 @@ function App() {
                 </button>
               ))}
             </div>
+          </div>
+
+          <div className="panel-block compact">
+            <div className="section-title">
+              <Cloud size={18} />
+              <h2>기기 연동</h2>
+            </div>
+            <div className="sync-grid">
+              <input
+                value={syncConfig.endpoint}
+                onChange={(event) => updateSyncConfig({ endpoint: event.target.value })}
+                aria-label="Sync 서버 주소"
+                placeholder="http://127.0.0.1:8787"
+              />
+              <input
+                value={syncConfig.workspaceId}
+                onChange={(event) => updateSyncConfig({ workspaceId: event.target.value })}
+                aria-label="워크스페이스 ID"
+                placeholder="workspace"
+              />
+              <input
+                type="password"
+                value={syncConfig.token}
+                onChange={(event) => updateSyncConfig({ token: event.target.value })}
+                aria-label="Sync 토큰"
+                placeholder="sync token"
+              />
+              <input
+                value={syncConfig.deviceName}
+                onChange={(event) => updateSyncConfig({ deviceName: event.target.value })}
+                aria-label="기기 이름"
+                placeholder="내 노트북"
+              />
+            </div>
+            <div className="sync-actions">
+              <button type="button" onClick={pullSync}>
+                <Download size={16} /> 가져오기
+              </button>
+              <button type="button" onClick={pushSync}>
+                <Upload size={16} /> 업로드
+              </button>
+            </div>
+            <p className="sync-status">{syncStatus}</p>
           </div>
         </aside>
 
