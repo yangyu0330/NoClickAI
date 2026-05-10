@@ -10,13 +10,14 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "dev:web": "vite --host 0.0.0.0",
-    "sync:server": "node server/sync-server.mjs",
+    "sync:server": "node --env-file-if-exists=.env server/sync-server.mjs",
     "dev:full": "concurrently -n web,sync \"npm:dev:web\" \"npm:sync:server\"",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "desktop:dev": "npm run build && electron .",
     "desktop:dist": "npm run build && electron-builder",
+    "desktop:dist:signed": "npm run build && node --env-file-if-exists=.env ./node_modules/electron-builder/cli.js",
     "android:sync": "npm run build && cap sync android",
     "android:open": "cap open android"
   },

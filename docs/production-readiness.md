@@ -7,8 +7,12 @@
 - 하나의 UI 코어를 Web/PWA, Android, Electron Desktop에서 공유
 - 로컬 저장/복원으로 앱 재실행 후에도 작업 상태 유지
 - Sync 서버로 여러 기기 간 히스토리, 연결 상태, 현재 계획 동기화
+- 이메일/비밀번호 계정, 로컬 세션 토큰, 워크스페이스별 동기화 인증
+- Stripe Checkout 구독 생성, Billing Portal 연결, 서명 검증 웹훅 처리
+- 인증서 경로가 제공되면 Sync 서버를 HTTPS로 직접 실행 가능
 - 개인 API Key는 기기 로컬에만 저장하고 Sync 대상에서 제외
 - AI 플래너는 서버 프록시를 통해 OpenAI Responses API를 호출하고 실패 시 규칙 기반 플래너로 대체
+- 기본 AI 모델은 `gpt-5-nano`로 설정해 계획 생성 비용을 최소화하고, 품질이 부족한 워크스페이스만 `NOCLICK_OPENAI_MODEL`로 상위 모델을 선택
 - 자동화 템플릿, 히스토리 검색, JSON 백업/복원, 제품 성과 지표 포함
 - 위험도별 승인 정책으로 메시지 발송, 일정 등록, 제출 폼 입력을 자동 실행 전에 차단
 - Android 네이티브 프로젝트와 Windows 설치 파일 빌드 파이프라인 제공
@@ -22,8 +26,8 @@
    - `NOCLICK_ALLOWED_ORIGIN`으로 제품 도메인만 CORS 허용
 
 2. 사용자 인증
-   - OAuth 로그인 또는 패스키 기반 사용자 계정
-   - 워크스페이스별 접근 제어와 토큰 회전
+   - 현재 이메일/비밀번호 계정과 세션 토큰 포함
+   - 운영 전 이메일 인증, 비밀번호 재설정, 토큰 회전, 패스키 또는 OAuth 추가 권장
 
 3. 실제 앱 어댑터
    - Google Calendar, Gmail, Notion, Slack, Discord API는 서버에서 OAuth 토큰으로 실행
@@ -39,6 +43,11 @@
    - Android build machine: JDK 21, Android SDK, Gradle cache 준비
    - Desktop: Windows 코드 서명 인증서 적용
    - Web/PWA: HTTPS 도메인, CSP, Service Worker 캐시 버전 관리
+
+6. 결제 운영
+   - Stripe live secret key, recurring Price ID, webhook secret 설정
+   - 웹훅 이벤트는 필요한 이벤트만 수신
+   - 운영에서는 `NOCLICK_REQUIRE_SUBSCRIPTION=true`로 미구독 사용자의 AI/Sync 접근 차단
 
 ## 동기화 데이터 정책
 

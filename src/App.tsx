@@ -7,6 +7,7 @@ import {
   ChevronRight,
   Cloud,
   Clock3,
+  CreditCard,
   Database,
   Download,
   FileText,
@@ -16,6 +17,8 @@ import {
   ListChecks,
   Loader2,
   Lock,
+  LogIn,
+  LogOut,
   MessageSquareText,
   Plus,
   Play,
@@ -26,6 +29,7 @@ import {
   Smartphone,
   Trash2,
   Upload,
+  UserPlus,
   Users,
   Wifi,
   WifiOff,
@@ -103,6 +107,27 @@ type ExportSnapshot = SyncSnapshot & {
 }
 
 type SyncHealth = 'unknown' | 'online' | 'offline'
+
+type AccountUser = {
+  id: string
+  email: string
+  name: string
+  subscriptionStatus: string
+  billingPlan: string
+  createdAt: string
+}
+
+type AuthSession = {
+  token: string
+  user: AccountUser
+}
+
+type BillingStatus = {
+  stripeConfigured: boolean
+  checkoutReady: boolean
+  portalReady: boolean
+  user: AccountUser
+}
 
 type AiPlanPayload = {
   title: string
@@ -198,6 +223,7 @@ const STORAGE_KEYS = {
   syncConfig: 'noclickai.syncConfig',
   templates: 'noclickai.templates',
   autoSync: 'noclickai.autoSync',
+  authSession: 'noclickai.authSession',
 }
 
 const DEFAULT_SYNC_CONFIG: SyncConfig = {
@@ -590,6 +616,14 @@ function App() {
     readJsonStorage<TaskTemplate[]>(STORAGE_KEYS.templates, DEFAULT_TEMPLATES),
   )
   const [autoSync, setAutoSync] = useState(() => readJsonStorage<boolean>(STORAGE_KEYS.autoSync, false))
+  const [authSession, setAuthSession] = useState<AuthSession | null>(() =>
+    readJsonStorage<AuthSession | null>(STORAGE_KEYS.authSession, null),
+  )
+  const [accountEmail, setAccountEmail] = useState('')
+  const [accountPassword, setAccountPassword] = useState('')
+  const [accountStatus, setAccountStatus] = useState('계정 연결 전')
+  const [billingStatus, setBillingStatus] = useState<BillingStatus | null>(null)
+  const [isAccountBusy, setIsAccountBusy] = useState(false)
   const [historyQuery, setHistoryQuery] = useState('')
   const [templateName, setTemplateName] = useState('')
   const [syncStatus, setSyncStatus] = useState('동기화 서버 연결 전')
@@ -597,6 +631,8 @@ function App() {
   const [plannerStatus, setPlannerStatus] = useState('규칙 기반 플래너 준비됨')
   const [isGeneratingPlan, setIsGeneratingPlan] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const accessToken = authSession?.token || syncConfig.token.trim()
+  const effectiveWorkspaceId = syncConfig.workspaceId.trim() || authSession?.user.id || ''
 
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEYS.prompt, prompt)
@@ -627,17 +663,25 @@ function App() {
   }, [autoSync])
 
   useEffect(() => {
+    if (authSession) {
+      writeJsonStorage(STORAGE_KEYS.authSession, authSession)
+      return
+    }
+    window.localStorage.removeItem(STORAGE_KEYS.authSession)
+  }, [authSession])
+
+  useEffect(() => {
     if (!autoSync) return
-    if (!syncConfig.endpoint.trim() || !syncConfig.workspaceId.trim() || !syncConfig.token.trim()) return
+    if (!syncConfig.endpoint.trim() || !effectiveWorkspaceId || !accessToken) return
 
     const timer = window.setTimeout(async () => {
       try {
         const response = await fetch(`${normalizeEndpoint(syncConfig.endpoint)}/v1/state`, {
           method: 'PUT',
           headers: {
-            Authorization: `Bearer ${syncConfig.token}`,
+            Authorization: `Bearer ${accessToken}`,
             'Content-Type': 'application/json',
-            'X-Workspace-Id': syncConfig.workspaceId,
+            'X-Workspace-Id': effectiveWorkspaceId,
           },
           body: JSON.stringify({
             version: 1,
@@ -660,7 +704,7 @@ function App() {
     }, 1800)
 
     return () => window.clearTimeout(timer)
-  }, [activePlan, autoSync, history, providers, syncConfig, templates])
+  }, [accessToken, activePlan, autoSync, effectiveWorkspaceId, history, providers, syncConfig, templates])
 
   useEffect(() => {
     if (activePlan.phase !== 'running') return
@@ -762,14 +806,129 @@ function App() {
     setApiKeySaved(false)
   }
 
+  const refreshBillingStatus = async (session = authSession) => {
+    if (!session || !syncConfig.endpoint.trim()) return
+
+    try {
+      const response = await fetch(`${normalizeEndpoint(syncConfig.endpoint)}/v1/billing/status`, {
+        headers: {
+          Authorization: `Bearer ${session.token}`,
+        },
+      })
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`)
+      setBillingStatus(body as BillingStatus)
+      if ((body as BillingStatus).user) {
+        setAuthSession((current) => (current ? { ...current, user: (body as BillingStatus).user } : current))
+      }
+      setAccountStatus('계정 상태 확인 완료')
+    } catch (error) {
+      setAccountStatus(`계정 상태 확인 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`)
+    }
+  }
+
+  const submitAccount = async (mode: 'login' | 'register') => {
+    if (!syncConfig.endpoint.trim()) {
+      setAccountStatus('Sync/API 서버 주소가 필요합니다.')
+      return
+    }
+
+    setIsAccountBusy(true)
+    setAccountStatus(mode === 'login' ? '로그인 중...' : '계정 생성 중...')
+    try {
+      const response = await fetch(`${normalizeEndpoint(syncConfig.endpoint)}/v1/auth/${mode}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: accountEmail,
+          password: accountPassword,
+        }),
+      })
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`)
+
+      const session = body as AuthSession
+      setAuthSession(session)
+      setSyncConfig((current) => ({ ...current, workspaceId: session.user.id }))
+      setAccountPassword('')
+      setAccountStatus(mode === 'login' ? '로그인 완료' : '계정 생성 완료')
+      await refreshBillingStatus(session)
+    } catch (error) {
+      setAccountStatus(`${mode === 'login' ? '로그인' : '가입'} 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`)
+    } finally {
+      setIsAccountBusy(false)
+    }
+  }
+
+  const logoutAccount = async () => {
+    if (authSession && syncConfig.endpoint.trim()) {
+      await fetch(`${normalizeEndpoint(syncConfig.endpoint)}/v1/auth/logout`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${authSession.token}`,
+        },
+      }).catch(() => undefined)
+    }
+    setAuthSession(null)
+    setBillingStatus(null)
+    setAccountStatus('로그아웃 완료')
+  }
+
+  const startCheckout = async () => {
+    if (!authSession) {
+      setAccountStatus('결제 전 로그인이 필요합니다.')
+      return
+    }
+
+    setIsAccountBusy(true)
+    setAccountStatus('Stripe 결제창 생성 중...')
+    try {
+      const response = await fetch(`${normalizeEndpoint(syncConfig.endpoint)}/v1/billing/checkout`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${authSession.token}`,
+        },
+      })
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`)
+      window.location.href = body.url
+    } catch (error) {
+      setAccountStatus(`결제 시작 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`)
+    } finally {
+      setIsAccountBusy(false)
+    }
+  }
+
+  const openBillingPortal = async () => {
+    if (!authSession) return
+
+    setIsAccountBusy(true)
+    setAccountStatus('구독 관리창 생성 중...')
+    try {
+      const response = await fetch(`${normalizeEndpoint(syncConfig.endpoint)}/v1/billing/portal`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${authSession.token}`,
+        },
+      })
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`)
+      window.location.href = body.url
+    } catch (error) {
+      setAccountStatus(`구독 관리 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`)
+    } finally {
+      setIsAccountBusy(false)
+    }
+  }
+
   const createRemoteAiPlan = async (nextPrompt: string) => {
     const response = await fetch(`${normalizeEndpoint(syncConfig.endpoint)}/v1/plan`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${syncConfig.token}`,
+        Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
         'X-OpenAI-Key': apiKey.trim(),
-        'X-Workspace-Id': syncConfig.workspaceId,
+        'X-Workspace-Id': effectiveWorkspaceId,
       },
       body: JSON.stringify({
         prompt: nextPrompt,
@@ -788,13 +947,14 @@ function App() {
 
     let plan: AutomationPlan
     try {
-      if (apiKey.trim() && !assertSyncReady()) {
-        setPlannerStatus('AI 플래너 생성 중...')
+      const syncError = assertSyncReady()
+      if (!syncError) {
+        setPlannerStatus(apiKey.trim() ? '개인 키로 AI 플래너 생성 중...' : '서버 키로 AI 플래너 생성 중...')
         plan = await createRemoteAiPlan(nextPrompt)
-        setPlannerStatus('AI 플래너 사용됨')
+        setPlannerStatus(apiKey.trim() ? '개인 키 AI 플래너 사용됨' : '서버 키 AI 플래너 사용됨')
       } else {
         plan = enrichPlan(buildPlan(nextPrompt), 'rules')
-        setPlannerStatus(apiKey.trim() ? 'Sync 설정이 없어 규칙 기반으로 생성됨' : '규칙 기반 플래너 사용됨')
+        setPlannerStatus(`${syncError} 규칙 기반으로 생성됨`)
       }
     } catch (error) {
       plan = enrichPlan(buildPlan(nextPrompt), 'rules')
@@ -879,8 +1039,8 @@ function App() {
 
   const assertSyncReady = () => {
     if (!syncConfig.endpoint.trim()) return 'Sync 서버 주소가 필요합니다.'
-    if (!syncConfig.workspaceId.trim()) return '워크스페이스 ID가 필요합니다.'
-    if (!syncConfig.token.trim()) return 'Sync 토큰이 필요합니다.'
+    if (!effectiveWorkspaceId) return '워크스페이스 ID가 필요합니다.'
+    if (!accessToken) return '로그인 또는 Sync 토큰이 필요합니다.'
     return ''
   }
 
@@ -896,9 +1056,9 @@ function App() {
       const response = await fetch(`${normalizeEndpoint(syncConfig.endpoint)}/v1/state`, {
         method: 'PUT',
         headers: {
-          Authorization: `Bearer ${syncConfig.token}`,
+          Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
-          'X-Workspace-Id': syncConfig.workspaceId,
+          'X-Workspace-Id': effectiveWorkspaceId,
         },
         body: JSON.stringify(buildSyncSnapshot()),
       })
@@ -920,10 +1080,10 @@ function App() {
     setSyncStatus('서버에서 가져오는 중...')
     try {
       const response = await fetch(
-        `${normalizeEndpoint(syncConfig.endpoint)}/v1/state?workspaceId=${encodeURIComponent(syncConfig.workspaceId)}`,
+        `${normalizeEndpoint(syncConfig.endpoint)}/v1/state?workspaceId=${encodeURIComponent(effectiveWorkspaceId)}`,
         {
           headers: {
-            Authorization: `Bearer ${syncConfig.token}`,
+            Authorization: `Bearer ${accessToken}`,
           },
         },
       )
@@ -1053,7 +1213,7 @@ function App() {
             />
             <button className="primary-button" type="button" onClick={() => void generatePlan()} disabled={isGeneratingPlan}>
               {isGeneratingPlan ? <Loader2 size={18} className="spin" /> : <Sparkles size={18} />}
-              {isGeneratingPlan ? '계획 생성 중' : apiKeySaved ? 'AI 계획 생성' : '계획 생성'}
+              {isGeneratingPlan ? '계획 생성 중' : apiKeySaved || accessToken ? 'AI 계획 생성' : '계획 생성'}
             </button>
             <p className="sync-status">{plannerStatus}</p>
             <div className="example-grid">
@@ -1087,13 +1247,82 @@ function App() {
             </div>
             <div className="status-line">
               <span className={apiKeySaved ? 'dot connected' : 'dot'} />
-              {apiKeySaved ? 'AI 플래너 준비됨. 키는 이 기기에만 저장됨' : '키 없이 규칙 기반 플래너 사용'}
+              {apiKeySaved
+                ? 'AI 플래너 준비됨. 키는 이 기기에만 저장됨'
+                : '브라우저 키 없음. 서버 .env 키가 있으면 AI 플래너 사용'}
               {apiKeySaved && (
                 <button type="button" className="link-button" onClick={clearApiKey}>
                   삭제
                 </button>
               )}
             </div>
+          </div>
+
+          <div className="panel-block compact">
+            <div className="section-title">
+              <Users size={18} />
+              <h2>계정/결제</h2>
+            </div>
+            {authSession ? (
+              <>
+                <div className="account-card">
+                  <strong>{authSession.user.email}</strong>
+                  <span>
+                    {authSession.user.billingPlan === 'pro' ? 'Pro' : 'Free'} /{' '}
+                    {authSession.user.subscriptionStatus}
+                  </span>
+                </div>
+                <div className="account-actions">
+                  <button type="button" onClick={() => void refreshBillingStatus()} disabled={isAccountBusy}>
+                    <RefreshCcw size={16} /> 상태
+                  </button>
+                  <button type="button" onClick={() => void startCheckout()} disabled={isAccountBusy}>
+                    <CreditCard size={16} /> 구독
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void openBillingPortal()}
+                    disabled={isAccountBusy || !(billingStatus?.portalReady ?? false)}
+                  >
+                    <CreditCard size={16} /> 관리
+                  </button>
+                  <button type="button" onClick={() => void logoutAccount()} disabled={isAccountBusy}>
+                    <LogOut size={16} /> 로그아웃
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="account-form">
+                  <input
+                    type="email"
+                    value={accountEmail}
+                    onChange={(event) => setAccountEmail(event.target.value)}
+                    placeholder="email@example.com"
+                    aria-label="계정 이메일"
+                  />
+                  <input
+                    type="password"
+                    value={accountPassword}
+                    onChange={(event) => setAccountPassword(event.target.value)}
+                    placeholder="비밀번호 8자 이상"
+                    aria-label="계정 비밀번호"
+                  />
+                </div>
+                <div className="account-actions">
+                  <button type="button" onClick={() => void submitAccount('login')} disabled={isAccountBusy}>
+                    <LogIn size={16} /> 로그인
+                  </button>
+                  <button type="button" onClick={() => void submitAccount('register')} disabled={isAccountBusy}>
+                    <UserPlus size={16} /> 가입
+                  </button>
+                </div>
+              </>
+            )}
+            <p className="sync-status">
+              {accountStatus}
+              {billingStatus && ` / Stripe ${billingStatus.stripeConfigured ? '연결됨' : '설정 필요'}`}
+            </p>
           </div>
 
           <div className="panel-block compact">

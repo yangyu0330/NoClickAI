@@ -243,6 +243,35 @@ button:disabled {
   flex: 0 0 auto;
 }
 
+.account-form,
+.account-actions,
+.account-card {
+  display: grid;
+  gap: 8px;
+}
+
+.account-actions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 10px;
+}
+
+.account-card {
+  padding: 10px;
+  background: var(--soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.account-card strong,
+.account-card span {
+  overflow-wrap: anywhere;
+}
+
+.account-card span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .status-line {
   gap: 7px;
   min-height: 28px;
