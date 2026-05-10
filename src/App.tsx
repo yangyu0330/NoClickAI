@@ -101,7 +101,12 @@ const STORAGE_KEYS = {
   activeRun: 'noclickai.activeRun',
 }
 
-const DEFAULT_ENDPOINT = 'http://127.0.0.1:8788'
+const DEFAULT_ENDPOINT =
+  typeof window === 'undefined'
+    ? 'http://127.0.0.1:8788'
+    : window.location.port === '5173'
+      ? 'http://127.0.0.1:8788'
+      : window.location.origin
 
 const QUICK_PROMPTS = [
   '내일 오전 10시에 회의 잡고 참석자에게 메일 초안 만들어줘',

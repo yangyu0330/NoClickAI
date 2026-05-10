@@ -1,14 +1,16 @@
 import { createServer as createHttpServer } from 'node:http'
 import { createServer as createHttpsServer } from 'node:https'
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
 import { readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import crypto from 'node:crypto'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const DATA_DIR = process.env.NOCLICK_SYNC_DATA_DIR || join(__dirname, 'data')
+const DATA_DIR = process.env.NOCLICK_SYNC_DATA_DIR || (process.env.VERCEL ? join(tmpdir(), 'noclick-data') : join(__dirname, 'data'))
 const DATA_FILE = join(DATA_DIR, 'workspaces.json')
+const WEB_DIR = process.env.NOCLICK_WEB_DIR || join(__dirname, '..', 'dist')
 const PORT = Number(process.env.PORT || 8788)
 const HOST = process.env.HOST || '127.0.0.1'
 const SYNC_TOKEN = process.env.NOCLICK_SYNC_TOKEN || 'dev-sync-token'
@@ -33,6 +35,18 @@ const RATE_LIMIT_MAX = 90
 const SESSION_TTL_MS = Number(process.env.NOCLICK_SESSION_TTL_DAYS || 30) * 24 * 60 * 60 * 1000
 const STRIPE_SIGNATURE_TOLERANCE_SECONDS = 300
 const buckets = new Map()
+const MIME_TYPES = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.ico': 'image/x-icon',
+  '.webmanifest': 'application/manifest+json',
+}
 
 const CONNECTOR_DEFINITIONS = [
   {
@@ -180,6 +194,39 @@ function sendJson(response, status, body) {
     'Content-Type': 'application/json; charset=utf-8',
   })
   response.end(JSON.stringify(body))
+}
+
+async function sendStatic(response, url) {
+  const pathname = decodeURIComponent(url.pathname)
+  const safePath = pathname === '/' ? '/index.html' : pathname
+  const target = join(WEB_DIR, safePath.replace(/^\/+/, ''))
+  const root = join(WEB_DIR)
+
+  if (!target.startsWith(root)) {
+    sendJson(response, 403, { error: 'forbidden' })
+    return
+  }
+
+  try {
+    const info = await stat(target)
+    if (!info.isFile()) throw new Error('not_file')
+    const ext = target.slice(target.lastIndexOf('.'))
+    response.writeHead(200, {
+      'Content-Type': MIME_TYPES[ext] || 'application/octet-stream',
+      'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=31536000, immutable',
+    })
+    response.end(await readFile(target))
+  } catch {
+    try {
+      response.writeHead(200, {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-cache',
+      })
+      response.end(await readFile(join(WEB_DIR, 'index.html')))
+    } catch {
+      sendJson(response, 404, { error: 'not_found' })
+    }
+  }
 }
 
 function redirect(response, location) {
@@ -1598,7 +1645,7 @@ async function handleChat(request, response) {
   })
 }
 
-async function handleRequest(request, response) {
+export async function handleRequest(request, response) {
   const protocol = TLS_KEY_PATH && TLS_CERT_PATH ? 'https' : 'http'
   const url = new URL(request.url || '/', `${protocol}://${request.headers.host || `${HOST}:${PORT}`}`)
 
@@ -1665,6 +1712,10 @@ async function handleRequest(request, response) {
     }
 
     if (url.pathname !== '/v1/state' && url.pathname !== '/v1/plan') {
+      if (request.method === 'GET' || request.method === 'HEAD') {
+        await sendStatic(response, url)
+        return
+      }
       sendJson(response, 404, { error: 'not_found' })
       return
     }
@@ -1726,28 +1777,34 @@ async function handleRequest(request, response) {
   }
 }
 
-if (Boolean(TLS_KEY_PATH) !== Boolean(TLS_CERT_PATH)) {
-  throw new Error('NOCLICK_TLS_KEY_PATH and NOCLICK_TLS_CERT_PATH must be set together.')
+export function startServer() {
+  if (Boolean(TLS_KEY_PATH) !== Boolean(TLS_CERT_PATH)) {
+    throw new Error('NOCLICK_TLS_KEY_PATH and NOCLICK_TLS_CERT_PATH must be set together.')
+  }
+
+  const protocol = TLS_KEY_PATH && TLS_CERT_PATH ? 'https' : 'http'
+  const server =
+    protocol === 'https'
+      ? createHttpsServer(
+          {
+            key: readFileSync(TLS_KEY_PATH),
+            cert: readFileSync(TLS_CERT_PATH),
+          },
+          handleRequest,
+        )
+      : createHttpServer(handleRequest)
+
+  server.listen(PORT, HOST, () => {
+    console.log(`NoClick Sync server listening on ${protocol}://${HOST}:${PORT}`)
+    if (SYNC_TOKEN === 'dev-sync-token') {
+      console.log('Set NOCLICK_SYNC_TOKEN in production. Current token is for local development only.')
+    }
+    if (!stripeConfigured()) {
+      console.log('Stripe checkout is disabled until STRIPE_SECRET_KEY and STRIPE_PRICE_ID are set.')
+    }
+  })
 }
 
-const protocol = TLS_KEY_PATH && TLS_CERT_PATH ? 'https' : 'http'
-const server =
-  protocol === 'https'
-    ? createHttpsServer(
-        {
-          key: readFileSync(TLS_KEY_PATH),
-          cert: readFileSync(TLS_CERT_PATH),
-        },
-        handleRequest,
-      )
-    : createHttpServer(handleRequest)
-
-server.listen(PORT, HOST, () => {
-  console.log(`NoClick Sync server listening on ${protocol}://${HOST}:${PORT}`)
-  if (SYNC_TOKEN === 'dev-sync-token') {
-    console.log('Set NOCLICK_SYNC_TOKEN in production. Current token is for local development only.')
-  }
-  if (!stripeConfigured()) {
-    console.log('Stripe checkout is disabled until STRIPE_SECRET_KEY and STRIPE_PRICE_ID are set.')
-  }
-})
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  startServer()
+}

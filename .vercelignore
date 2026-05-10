@@ -1,0 +1,6 @@
+android
+release
+server/data
+*.log
+sync-server*.log
+vite-dev*.log
