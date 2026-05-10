@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import crypto from 'node:crypto'
+import { neon } from '@neondatabase/serverless'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const DATA_DIR = process.env.NOCLICK_SYNC_DATA_DIR || (process.env.VERCEL ? join(tmpdir(), 'noclick-data') : join(__dirname, 'data'))
@@ -16,6 +17,7 @@ const HOST = process.env.HOST || '127.0.0.1'
 const SYNC_TOKEN = process.env.NOCLICK_SYNC_TOKEN || 'dev-sync-token'
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || ''
 const OPENAI_MODEL = process.env.NOCLICK_OPENAI_MODEL || 'gpt-5-nano'
+const DATABASE_URL = process.env.DATABASE_URL || process.env.POSTGRES_URL || ''
 const ALLOWED_ORIGIN = process.env.NOCLICK_ALLOWED_ORIGIN || '*'
 const PUBLIC_APP_URL = process.env.NOCLICK_PUBLIC_APP_URL || `http://${HOST}:${PORT}`
 const SERVER_BASE_URL = process.env.NOCLICK_SERVER_BASE_URL || `http://${HOST}:${PORT}`
@@ -34,7 +36,12 @@ const RATE_LIMIT_WINDOW_MS = 60_000
 const RATE_LIMIT_MAX = 90
 const SESSION_TTL_MS = Number(process.env.NOCLICK_SESSION_TTL_DAYS || 30) * 24 * 60 * 60 * 1000
 const STRIPE_SIGNATURE_TOLERANCE_SECONDS = 300
+const STORE_ID = 'default'
+const STORE_TABLE = 'noclick_store'
+const STORAGE_TARGET = DATABASE_URL ? `postgres:${STORE_TABLE}/${STORE_ID}` : DATA_FILE
 const buckets = new Map()
+let postgresClient = null
+let postgresStoreReady = false
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -171,7 +178,49 @@ function normalizeStore(store = {}) {
   }
 }
 
+function getPostgresClient() {
+  if (!DATABASE_URL) return null
+  postgresClient ||= neon(DATABASE_URL)
+  return postgresClient
+}
+
+async function ensurePostgresStore() {
+  if (postgresStoreReady) return
+  const sql = getPostgresClient()
+  if (!sql) return
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS noclick_store (
+      id text PRIMARY KEY,
+      data jsonb NOT NULL,
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `
+  postgresStoreReady = true
+}
+
+async function readPostgresStore() {
+  await ensurePostgresStore()
+  const sql = getPostgresClient()
+  const rows = await sql`SELECT data FROM noclick_store WHERE id = ${STORE_ID} LIMIT 1`
+  return normalizeStore(rows[0]?.data || {})
+}
+
+async function writePostgresStore(store) {
+  await ensurePostgresStore()
+  const sql = getPostgresClient()
+  const normalized = normalizeStore(store)
+  await sql`
+    INSERT INTO noclick_store (id, data, updated_at)
+    VALUES (${STORE_ID}, ${JSON.stringify(normalized)}::jsonb, now())
+    ON CONFLICT (id)
+    DO UPDATE SET data = EXCLUDED.data, updated_at = now()
+  `
+}
+
 async function readStore() {
+  if (DATABASE_URL) return readPostgresStore()
+
   try {
     return normalizeStore(JSON.parse(await readFile(DATA_FILE, 'utf8')))
   } catch {
@@ -180,6 +229,11 @@ async function readStore() {
 }
 
 async function writeStore(store) {
+  if (DATABASE_URL) {
+    await writePostgresStore(store)
+    return
+  }
+
   await mkdir(DATA_DIR, { recursive: true })
   const tempFile = `${DATA_FILE}.${process.pid}.tmp`
   await writeFile(tempFile, JSON.stringify(normalizeStore(store), null, 2), 'utf8')
@@ -1666,10 +1720,11 @@ export async function handleRequest(request, response) {
       model: OPENAI_MODEL,
       protocol,
       serverKeyConfigured: Boolean(OPENAI_API_KEY),
+      databaseConfigured: Boolean(DATABASE_URL),
       stripeConfigured: stripeConfigured(),
       stripeWebhookConfigured: Boolean(STRIPE_WEBHOOK_SECRET),
       requireSubscription: REQUIRE_SUBSCRIPTION,
-      storage: DATA_FILE,
+      storage: STORAGE_TARGET,
       time: new Date().toISOString(),
     })
     return

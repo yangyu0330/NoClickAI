@@ -33,3 +33,4 @@ android/keystore.properties
 *.sw?
 
 .vercel
+.env*.local
