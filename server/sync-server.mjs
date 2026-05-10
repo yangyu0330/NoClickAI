@@ -16,6 +16,7 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY || ''
 const OPENAI_MODEL = process.env.NOCLICK_OPENAI_MODEL || 'gpt-5-nano'
 const ALLOWED_ORIGIN = process.env.NOCLICK_ALLOWED_ORIGIN || '*'
 const PUBLIC_APP_URL = process.env.NOCLICK_PUBLIC_APP_URL || `http://${HOST}:${PORT}`
+const SERVER_BASE_URL = process.env.NOCLICK_SERVER_BASE_URL || `http://${HOST}:${PORT}`
 const TLS_KEY_PATH = process.env.NOCLICK_TLS_KEY_PATH || ''
 const TLS_CERT_PATH = process.env.NOCLICK_TLS_CERT_PATH || ''
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || ''
@@ -25,6 +26,7 @@ const STRIPE_SUCCESS_URL = process.env.STRIPE_SUCCESS_URL || `${PUBLIC_APP_URL}?
 const STRIPE_CANCEL_URL = process.env.STRIPE_CANCEL_URL || `${PUBLIC_APP_URL}?billing=cancel`
 const STRIPE_PORTAL_RETURN_URL = process.env.STRIPE_PORTAL_RETURN_URL || PUBLIC_APP_URL
 const REQUIRE_SUBSCRIPTION = process.env.NOCLICK_REQUIRE_SUBSCRIPTION === 'true'
+const TOKEN_ENCRYPTION_KEY = process.env.NOCLICK_TOKEN_ENCRYPTION_KEY || SYNC_TOKEN
 const MAX_BODY_BYTES = 1_000_000
 const RATE_LIMIT_WINDOW_MS = 60_000
 const RATE_LIMIT_MAX = 90
@@ -32,12 +34,126 @@ const SESSION_TTL_MS = Number(process.env.NOCLICK_SESSION_TTL_DAYS || 30) * 24 *
 const STRIPE_SIGNATURE_TOLERANCE_SECONDS = 300
 const buckets = new Map()
 
+const CONNECTOR_DEFINITIONS = [
+  {
+    id: 'google-calendar',
+    tokenProvider: 'google',
+    name: 'Google Calendar',
+    type: 'oauth',
+    actions: ['calendar.create_event'],
+    configured: () => Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
+  },
+  {
+    id: 'gmail',
+    tokenProvider: 'google',
+    name: 'Gmail',
+    type: 'oauth',
+    actions: ['gmail.create_draft'],
+    configured: () => Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
+  },
+  {
+    id: 'notion',
+    tokenProvider: 'notion',
+    name: 'Notion',
+    type: 'oauth',
+    actions: ['notion.create_page'],
+    configured: () => Boolean(process.env.NOTION_CLIENT_ID && process.env.NOTION_CLIENT_SECRET),
+  },
+  {
+    id: 'slack',
+    tokenProvider: 'slack',
+    name: 'Slack',
+    type: 'oauth',
+    actions: ['slack.post_message'],
+    configured: () => Boolean(process.env.SLACK_CLIENT_ID && process.env.SLACK_CLIENT_SECRET),
+  },
+  {
+    id: 'telegram',
+    tokenProvider: 'telegram',
+    name: 'Telegram',
+    type: 'bot',
+    actions: ['telegram.send_message'],
+    configured: () => Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_DEFAULT_CHAT_ID),
+  },
+  {
+    id: 'kakao',
+    tokenProvider: 'kakao',
+    name: 'KakaoTalk',
+    type: 'oauth_or_share',
+    actions: ['kakao.share_text'],
+    configured: () => Boolean(process.env.KAKAO_CLIENT_ID && process.env.KAKAO_CLIENT_SECRET),
+  },
+]
+
+const PROVIDER_ALIASES = {
+  google: 'google',
+  'google-calendar': 'google',
+  gmail: 'google',
+  notion: 'notion',
+  slack: 'slack',
+  kakao: 'kakao',
+}
+
+const OAUTH_PROVIDERS = {
+  google: {
+    name: 'Google',
+    clientId: process.env.GOOGLE_CLIENT_ID || '',
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
+    authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
+    tokenUrl: 'https://oauth2.googleapis.com/token',
+    redirectUri: process.env.GOOGLE_REDIRECT_URI || `${SERVER_BASE_URL}/v1/connectors/google/callback`,
+    scopes: [
+      'https://www.googleapis.com/auth/calendar.events',
+      'https://www.googleapis.com/auth/gmail.compose',
+    ],
+  },
+  notion: {
+    name: 'Notion',
+    clientId: process.env.NOTION_CLIENT_ID || '',
+    clientSecret: process.env.NOTION_CLIENT_SECRET || '',
+    authUrl: 'https://api.notion.com/v1/oauth/authorize',
+    tokenUrl: 'https://api.notion.com/v1/oauth/token',
+    redirectUri: process.env.NOTION_REDIRECT_URI || `${SERVER_BASE_URL}/v1/connectors/notion/callback`,
+    scopes: [],
+  },
+  slack: {
+    name: 'Slack',
+    clientId: process.env.SLACK_CLIENT_ID || '',
+    clientSecret: process.env.SLACK_CLIENT_SECRET || '',
+    authUrl: 'https://slack.com/oauth/v2/authorize',
+    tokenUrl: 'https://slack.com/api/oauth.v2.access',
+    redirectUri: process.env.SLACK_REDIRECT_URI || `${SERVER_BASE_URL}/v1/connectors/slack/callback`,
+    scopes: ['chat:write', 'channels:read', 'groups:read'],
+  },
+  kakao: {
+    name: 'Kakao',
+    clientId: process.env.KAKAO_CLIENT_ID || '',
+    clientSecret: process.env.KAKAO_CLIENT_SECRET || '',
+    authUrl: 'https://kauth.kakao.com/oauth/authorize',
+    tokenUrl: 'https://kauth.kakao.com/oauth/token',
+    redirectUri: process.env.KAKAO_REDIRECT_URI || `${SERVER_BASE_URL}/v1/connectors/kakao/callback`,
+    scopes: ['talk_message'],
+  },
+}
+
+const ALLOWED_ACTIONS = {
+  'google-calendar': ['calendar.create_event'],
+  gmail: ['gmail.create_draft'],
+  notion: ['notion.create_page'],
+  slack: ['slack.post_message'],
+  telegram: ['telegram.send_message'],
+  kakao: ['kakao.share_text'],
+}
+
 function normalizeStore(store = {}) {
   return {
     workspaces: store.workspaces || {},
     users: store.users || {},
     sessions: store.sessions || {},
     billingEvents: store.billingEvents || {},
+    connections: store.connections || {},
+    runs: store.runs || {},
+    oauthStates: store.oauthStates || {},
   }
 }
 
@@ -66,6 +182,14 @@ function sendJson(response, status, body) {
   response.end(JSON.stringify(body))
 }
 
+function redirect(response, location) {
+  response.writeHead(302, {
+    Location: location,
+    'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
+  })
+  response.end()
+}
+
 function getBearerToken(request) {
   const auth = String(request.headers.authorization || '')
   return auth.startsWith('Bearer ') ? auth.slice('Bearer '.length).trim() : ''
@@ -84,6 +208,26 @@ function isAdminAuthorized(request) {
 
 function hashSecret(value) {
   return crypto.createHash('sha256').update(value).digest('hex')
+}
+
+function tokenCipherKey() {
+  return crypto.createHash('sha256').update(TOKEN_ENCRYPTION_KEY || 'noclick-dev-key').digest()
+}
+
+function protectToken(value) {
+  if (!value) return ''
+  const iv = crypto.randomBytes(12)
+  const cipher = crypto.createCipheriv('aes-256-gcm', tokenCipherKey(), iv)
+  const encrypted = Buffer.concat([cipher.update(String(value), 'utf8'), cipher.final()])
+  return `v1.${iv.toString('base64url')}.${cipher.getAuthTag().toString('base64url')}.${encrypted.toString('base64url')}`
+}
+
+function revealToken(value) {
+  if (!value || !String(value).startsWith('v1.')) return value || ''
+  const [, iv, tag, encrypted] = String(value).split('.')
+  const decipher = crypto.createDecipheriv('aes-256-gcm', tokenCipherKey(), Buffer.from(iv, 'base64url'))
+  decipher.setAuthTag(Buffer.from(tag, 'base64url'))
+  return Buffer.concat([decipher.update(Buffer.from(encrypted, 'base64url')), decipher.final()]).toString('utf8')
 }
 
 function normalizeEmail(email) {
@@ -142,6 +286,13 @@ function getApiAccess(request, store) {
   const auth = getAuthenticatedUser(request, store)
   if (auth) return { type: 'user', user: auth.user, tokenHash: auth.tokenHash }
   return null
+}
+
+function requireUserAccess(request, store) {
+  const auth = getAuthenticatedUser(request, store)
+  if (!auth) return null
+  if (REQUIRE_SUBSCRIPTION && !hasPaidAccess(auth.user)) return { paymentRequired: true, user: auth.user }
+  return auth
 }
 
 function hasPaidAccess(user) {
@@ -484,6 +635,358 @@ async function handleStripeWebhook(request, response) {
   sendJson(response, 200, { ok: true, received: true, ...result })
 }
 
+function connectionBucket(store, userId) {
+  if (!store.connections[userId]) store.connections[userId] = {}
+  return store.connections[userId]
+}
+
+function getRawConnection(store, userId, tokenProvider) {
+  return store.connections[userId]?.[tokenProvider] || null
+}
+
+function getConnection(store, userId, tokenProvider) {
+  const connection = getRawConnection(store, userId, tokenProvider)
+  if (!connection) return null
+  return {
+    ...connection,
+    accessToken: revealToken(connection.accessToken),
+    refreshToken: revealToken(connection.refreshToken),
+  }
+}
+
+function saveConnection(store, userId, tokenProvider, payload) {
+  connectionBucket(store, userId)[tokenProvider] = {
+    provider: tokenProvider,
+    accessToken: protectToken(payload.accessToken),
+    refreshToken: payload.refreshToken ? protectToken(payload.refreshToken) : getRawConnection(store, userId, tokenProvider)?.refreshToken || '',
+    expiresAt: payload.expiresAt || null,
+    scopes: payload.scopes || [],
+    metadata: payload.metadata || {},
+    connectedAt: new Date().toISOString(),
+  }
+}
+
+function connectorStatuses(store, userId) {
+  return CONNECTOR_DEFINITIONS.map((definition) => {
+    const connected =
+      definition.id === 'telegram'
+        ? definition.configured()
+        : Boolean(getRawConnection(store, userId, definition.tokenProvider))
+    return {
+      id: definition.id,
+      name: definition.name,
+      type: definition.type,
+      actions: definition.actions,
+      configured: definition.configured(),
+      connected,
+      needsOAuth: definition.type === 'oauth' || definition.type === 'oauth_or_share',
+    }
+  })
+}
+
+function oauthProviderFromConnector(providerId) {
+  return PROVIDER_ALIASES[providerId] || providerId
+}
+
+function buildOAuthUrl(store, userId, providerId) {
+  const providerKey = oauthProviderFromConnector(providerId)
+  const provider = OAUTH_PROVIDERS[providerKey]
+  if (!provider || !provider.clientId || !provider.clientSecret) {
+    const error = new Error('connector_not_configured')
+    error.statusCode = 400
+    throw error
+  }
+
+  const state = crypto.randomBytes(24).toString('base64url')
+  store.oauthStates[hashSecret(state)] = {
+    userId,
+    provider: providerKey,
+    requestedConnector: providerId,
+    createdAt: new Date().toISOString(),
+  }
+
+  const params = new URLSearchParams({
+    client_id: provider.clientId,
+    redirect_uri: provider.redirectUri,
+    response_type: 'code',
+    state,
+  })
+
+  if (providerKey === 'google') {
+    params.set('scope', provider.scopes.join(' '))
+    params.set('access_type', 'offline')
+    params.set('prompt', 'consent')
+    params.set('include_granted_scopes', 'true')
+  }
+
+  if (providerKey === 'notion') {
+    params.set('owner', 'user')
+  }
+
+  if (providerKey === 'slack') {
+    params.set('scope', provider.scopes.join(','))
+  }
+
+  if (providerKey === 'kakao') {
+    params.set('scope', provider.scopes.join(' '))
+  }
+
+  return `${provider.authUrl}?${params.toString()}`
+}
+
+async function exchangeOAuthCode(providerKey, code) {
+  const provider = OAUTH_PROVIDERS[providerKey]
+  if (!provider) throw new Error('unknown_provider')
+
+  if (providerKey === 'google') {
+    const body = new URLSearchParams({
+      code,
+      client_id: provider.clientId,
+      client_secret: provider.clientSecret,
+      redirect_uri: provider.redirectUri,
+      grant_type: 'authorization_code',
+    })
+    const result = await fetchJson(provider.tokenUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body,
+    })
+    return {
+      accessToken: result.access_token,
+      refreshToken: result.refresh_token,
+      expiresAt: result.expires_in ? new Date(Date.now() + result.expires_in * 1000).toISOString() : null,
+      scopes: String(result.scope || '').split(' ').filter(Boolean),
+      metadata: { tokenType: result.token_type },
+    }
+  }
+
+  if (providerKey === 'notion') {
+    const result = await fetchJson(provider.tokenUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${Buffer.from(`${provider.clientId}:${provider.clientSecret}`).toString('base64')}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: provider.redirectUri,
+      }),
+    })
+    return {
+      accessToken: result.access_token,
+      refreshToken: result.refresh_token,
+      expiresAt: null,
+      scopes: [],
+      metadata: {
+        workspaceId: result.workspace_id,
+        workspaceName: result.workspace_name,
+        botId: result.bot_id,
+        owner: result.owner,
+      },
+    }
+  }
+
+  if (providerKey === 'slack') {
+    const body = new URLSearchParams({
+      code,
+      client_id: provider.clientId,
+      client_secret: provider.clientSecret,
+      redirect_uri: provider.redirectUri,
+    })
+    const result = await fetchJson(provider.tokenUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body,
+    })
+    if (!result.ok) throw new Error(result.error || 'slack_oauth_failed')
+    return {
+      accessToken: result.access_token,
+      refreshToken: result.refresh_token,
+      expiresAt: result.expires_in ? new Date(Date.now() + result.expires_in * 1000).toISOString() : null,
+      scopes: String(result.scope || '').split(',').filter(Boolean),
+      metadata: { team: result.team, enterprise: result.enterprise, botUserId: result.bot_user_id },
+    }
+  }
+
+  if (providerKey === 'kakao') {
+    const body = new URLSearchParams({
+      code,
+      client_id: provider.clientId,
+      client_secret: provider.clientSecret,
+      redirect_uri: provider.redirectUri,
+      grant_type: 'authorization_code',
+    })
+    const result = await fetchJson(provider.tokenUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body,
+    })
+    return {
+      accessToken: result.access_token,
+      refreshToken: result.refresh_token,
+      expiresAt: result.expires_in ? new Date(Date.now() + result.expires_in * 1000).toISOString() : null,
+      scopes: String(result.scope || '').split(' ').filter(Boolean),
+      metadata: { tokenType: result.token_type },
+    }
+  }
+
+  throw new Error('unsupported_provider')
+}
+
+async function refreshGoogleTokenIfNeeded(store, userId) {
+  const raw = getRawConnection(store, userId, 'google')
+  const connection = getConnection(store, userId, 'google')
+  if (!connection) return null
+  if (!connection.expiresAt || new Date(connection.expiresAt).getTime() > Date.now() + 60_000) return connection
+  if (!connection.refreshToken) return connection
+
+  const provider = OAUTH_PROVIDERS.google
+  const body = new URLSearchParams({
+    client_id: provider.clientId,
+    client_secret: provider.clientSecret,
+    refresh_token: connection.refreshToken,
+    grant_type: 'refresh_token',
+  })
+  const result = await fetchJson(provider.tokenUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body,
+  })
+  raw.accessToken = protectToken(result.access_token)
+  raw.expiresAt = result.expires_in ? new Date(Date.now() + result.expires_in * 1000).toISOString() : raw.expiresAt
+  return getConnection(store, userId, 'google')
+}
+
+async function handleConnectors(request, response, url) {
+  const callbackMatch = url.pathname.match(/^\/v1\/connectors\/([^/]+)\/callback$/)
+  if (callbackMatch) {
+    await handleOAuthCallback(request, response, url, callbackMatch[1])
+    return
+  }
+
+  const store = await readStore()
+  const auth = requireUserAccess(request, store)
+  if (!auth) {
+    sendJson(response, 401, { error: 'unauthorized' })
+    return
+  }
+  if (auth.paymentRequired) {
+    sendJson(response, 402, { error: 'subscription_required' })
+    return
+  }
+
+  if (url.pathname === '/v1/connectors' && request.method === 'GET') {
+    sendJson(response, 200, { ok: true, connectors: connectorStatuses(store, auth.user.id) })
+    return
+  }
+
+  const startMatch = url.pathname.match(/^\/v1\/connectors\/([^/]+)\/start$/)
+  if (startMatch && request.method === 'GET') {
+    const providerId = startMatch[1]
+    const startUrl = buildOAuthUrl(store, auth.user.id, providerId)
+    await writeStore(store)
+    sendJson(response, 200, { ok: true, url: startUrl })
+    return
+  }
+
+  const disconnectMatch = url.pathname.match(/^\/v1\/connectors\/([^/]+)\/disconnect$/)
+  if (disconnectMatch && request.method === 'POST') {
+    const tokenProvider = oauthProviderFromConnector(disconnectMatch[1])
+    if (store.connections[auth.user.id]) delete store.connections[auth.user.id][tokenProvider]
+    await writeStore(store)
+    sendJson(response, 200, { ok: true, connectors: connectorStatuses(store, auth.user.id) })
+    return
+  }
+
+  sendJson(response, 404, { error: 'not_found' })
+}
+
+async function handleOAuthCallback(request, response, url, providerKey) {
+  const code = url.searchParams.get('code')
+  const state = url.searchParams.get('state')
+  if (!code || !state) {
+    redirect(response, `${PUBLIC_APP_URL}?connector=${encodeURIComponent(providerKey)}&status=missing_code`)
+    return
+  }
+
+  const store = await readStore()
+  const stateHash = hashSecret(state)
+  const stateRecord = store.oauthStates[stateHash]
+  if (!stateRecord || stateRecord.provider !== providerKey) {
+    redirect(response, `${PUBLIC_APP_URL}?connector=${encodeURIComponent(providerKey)}&status=invalid_state`)
+    return
+  }
+
+  try {
+    const tokenPayload = await exchangeOAuthCode(providerKey, code)
+    saveConnection(store, stateRecord.userId, providerKey, tokenPayload)
+    delete store.oauthStates[stateHash]
+    await writeStore(store)
+    redirect(response, `${PUBLIC_APP_URL}?connector=${encodeURIComponent(stateRecord.requestedConnector)}&status=connected`)
+  } catch (error) {
+    redirect(
+      response,
+      `${PUBLIC_APP_URL}?connector=${encodeURIComponent(providerKey)}&status=failed&reason=${encodeURIComponent(
+        error instanceof Error ? error.message : 'unknown',
+      )}`,
+    )
+  }
+}
+
+const runSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['assistantMessage', 'steps'],
+  properties: {
+    assistantMessage: { type: 'string' },
+    steps: {
+      type: 'array',
+      minItems: 1,
+      maxItems: 6,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['title', 'provider', 'action', 'detail', 'preview', 'risk', 'input'],
+        properties: {
+          title: { type: 'string' },
+          provider: { type: 'string', enum: ['google-calendar', 'gmail', 'notion', 'slack', 'telegram', 'kakao'] },
+          action: {
+            type: 'string',
+            enum: [
+              'calendar.create_event',
+              'gmail.create_draft',
+              'notion.create_page',
+              'slack.post_message',
+              'telegram.send_message',
+              'kakao.share_text',
+            ],
+          },
+          detail: { type: 'string' },
+          preview: { type: 'string' },
+          risk: { type: 'string', enum: ['low', 'medium', 'high', 'blocked'] },
+          input: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['title', 'description', 'when', 'to', 'subject', 'body', 'channel', 'parentPageId', 'chatId'],
+            properties: {
+              title: { type: 'string' },
+              description: { type: 'string' },
+              when: { type: 'string' },
+              to: { type: 'string' },
+              subject: { type: 'string' },
+              body: { type: 'string' },
+              channel: { type: 'string' },
+              parentPageId: { type: 'string' },
+              chatId: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+  },
+}
+
 const planSchema = {
   type: 'object',
   additionalProperties: false,
@@ -525,6 +1028,181 @@ function extractOutputText(responseBody) {
     .map((content) => content.text || '')
     .filter(Boolean)
     .join('\n')
+}
+
+function statusForRisk(risk) {
+  if (risk === 'low') return 'ready'
+  if (risk === 'blocked') return 'blocked'
+  return 'needs_approval'
+}
+
+function sanitizeStep(step, index) {
+  const provider = ALLOWED_ACTIONS[step.provider] ? step.provider : 'notion'
+  const action = ALLOWED_ACTIONS[provider].includes(step.action) ? step.action : ALLOWED_ACTIONS[provider][0]
+  const risk = ['low', 'medium', 'high', 'blocked'].includes(step.risk) ? step.risk : 'medium'
+  return {
+    id: `step_${index + 1}`,
+    title: String(step.title || action),
+    provider,
+    action,
+    detail: String(step.detail || ''),
+    preview: String(step.preview || ''),
+    risk,
+    status: statusForRisk(risk),
+    input: normalizeStepInput(step.input || {}),
+    result: null,
+  }
+}
+
+function normalizeStepInput(input) {
+  return {
+    title: String(input.title || ''),
+    description: String(input.description || ''),
+    when: String(input.when || ''),
+    to: String(input.to || ''),
+    subject: String(input.subject || ''),
+    body: String(input.body || ''),
+    channel: String(input.channel || ''),
+    parentPageId: String(input.parentPageId || ''),
+    chatId: String(input.chatId || ''),
+  }
+}
+
+function createFallbackRun(userId, prompt) {
+  const normalized = String(prompt || '').trim()
+  const lower = normalized.toLowerCase()
+  const needsMeeting = normalized.includes('회의') || normalized.includes('미팅') || lower.includes('meeting')
+  const needsNotice = normalized.includes('공지') || normalized.includes('알림') || normalized.includes('팀')
+
+  const steps = [
+    sanitizeStep(
+      {
+        title: needsMeeting ? '회의 일정 초안 생성' : '마감 일정 생성',
+        provider: 'google-calendar',
+        action: 'calendar.create_event',
+        detail: '요청에서 날짜와 목적을 추출해 캘린더 일정을 만듭니다.',
+        preview: normalized,
+        risk: 'medium',
+        input: {
+          title: needsMeeting ? '회의' : 'NoClick AI 작업',
+          description: normalized,
+          when: '',
+          to: '',
+          subject: '',
+          body: '',
+          channel: '',
+          parentPageId: '',
+          chatId: '',
+        },
+      },
+      0,
+    ),
+    sanitizeStep(
+      {
+        title: needsNotice ? '공지/메일 초안 생성' : '메일 초안 생성',
+        provider: 'gmail',
+        action: 'gmail.create_draft',
+        detail: '사용자 검토용 메일 초안을 만듭니다.',
+        preview: `${normalized}\n\n위 내용을 바탕으로 초안을 작성합니다.`,
+        risk: 'low',
+        input: {
+          title: '',
+          description: '',
+          when: '',
+          to: '',
+          subject: needsNotice ? '업무 공지' : 'NoClick AI 초안',
+          body: normalized,
+          channel: '',
+          parentPageId: '',
+          chatId: '',
+        },
+      },
+      1,
+    ),
+    sanitizeStep(
+      {
+        title: 'Notion 작업 페이지 생성',
+        provider: 'notion',
+        action: 'notion.create_page',
+        detail: '요청과 실행 체크리스트를 Notion 페이지로 정리합니다.',
+        preview: normalized,
+        risk: 'low',
+        input: {
+          title: 'NoClick AI 실행 계획',
+          description: normalized,
+          when: '',
+          to: '',
+          subject: '',
+          body: normalized,
+          channel: '',
+          parentPageId: '',
+          chatId: '',
+        },
+      },
+      2,
+    ),
+  ]
+
+  return {
+    id: `run_${crypto.randomBytes(10).toString('hex')}`,
+    userId,
+    prompt: normalized,
+    status: steps.some((step) => step.status === 'needs_approval') ? 'needs_approval' : 'ready',
+    assistantMessage: '요청을 실행 단계로 나눴습니다. 연결이 필요한 앱은 먼저 연결하고, 승인 단계는 승인 후 실행하세요.',
+    steps,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }
+}
+
+async function createAiRun(userId, prompt) {
+  if (!OPENAI_API_KEY) return createFallbackRun(userId, prompt)
+
+  const openAiResponse = await fetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: OPENAI_MODEL,
+      input: [
+        {
+          role: 'system',
+          content:
+            'You are NoClick AI. Convert Korean chat requests into safe automation tool calls. Prefer Calendar, Gmail draft, Notion page, Slack message, Telegram bot, and Kakao share actions. Never execute payment, transfer, account deletion, password change, or mass personal data submission; mark those steps blocked. High-risk message sending requires approval.',
+        },
+        {
+          role: 'user',
+          content: `현재 시각: ${new Date().toLocaleString('ko-KR')}\n사용자 요청: ${prompt}`,
+        },
+      ],
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'noclick_run',
+          strict: true,
+          schema: runSchema,
+        },
+      },
+    }),
+  })
+
+  const body = await openAiResponse.json().catch(() => ({}))
+  if (!openAiResponse.ok) return createFallbackRun(userId, prompt)
+  const payload = JSON.parse(extractOutputText(body))
+  const steps = payload.steps.map(sanitizeStep)
+
+  return {
+    id: `run_${crypto.randomBytes(10).toString('hex')}`,
+    userId,
+    prompt,
+    status: steps.some((step) => step.status === 'needs_approval') ? 'needs_approval' : 'ready',
+    assistantMessage: payload.assistantMessage,
+    steps,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }
 }
 
 async function createAiPlan(request) {
@@ -588,6 +1266,338 @@ async function createAiPlan(request) {
   }
 }
 
+async function fetchJson(url, options) {
+  const response = await fetch(url, options)
+  const body = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    const error = new Error(body.error_description || body.error?.message || body.error || response.statusText)
+    error.statusCode = response.status
+    error.body = body
+    throw error
+  }
+  return body
+}
+
+async function executeGoogleCalendar(store, run, step) {
+  const connection = await refreshGoogleTokenIfNeeded(store, run.userId)
+  if (!connection?.accessToken) return executionFailure('connection_required', 'Google 연결이 필요합니다.')
+
+  const start = step.input.when ? new Date(step.input.when) : new Date(Date.now() + 60 * 60 * 1000)
+  const end = new Date(start.getTime() + 60 * 60 * 1000)
+  const event = await fetchJson('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${connection.accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      summary: step.input.title || step.title,
+      description: step.input.description || run.prompt,
+      start: { dateTime: start.toISOString() },
+      end: { dateTime: end.toISOString() },
+    }),
+  })
+  return { ok: true, message: 'Google Calendar 일정이 생성되었습니다.', externalId: event.id, link: event.htmlLink }
+}
+
+async function executeGmailDraft(store, run, step) {
+  const connection = await refreshGoogleTokenIfNeeded(store, run.userId)
+  if (!connection?.accessToken) return executionFailure('connection_required', 'Gmail 연결이 필요합니다.')
+  if (!step.input.to) return executionFailure('recipient_required', '메일 수신자가 필요합니다.')
+
+  const subject = step.input.subject || step.title
+  const body = step.input.body || step.input.description || run.prompt
+  const raw = Buffer.from(
+    [
+      `To: ${step.input.to}`,
+      `Subject: =?UTF-8?B?${Buffer.from(subject).toString('base64')}?=`,
+      'Content-Type: text/plain; charset="UTF-8"',
+      '',
+      body,
+    ].join('\r\n'),
+    'utf8',
+  ).toString('base64url')
+
+  const draft = await fetchJson('https://gmail.googleapis.com/gmail/v1/users/me/drafts', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${connection.accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ message: { raw } }),
+  })
+  return { ok: true, message: 'Gmail 초안이 생성되었습니다.', externalId: draft.id }
+}
+
+async function executeNotionPage(store, run, step) {
+  const connection = getConnection(store, run.userId, 'notion')
+  if (!connection?.accessToken) return executionFailure('connection_required', 'Notion 연결이 필요합니다.')
+
+  const parentPageId = step.input.parentPageId || process.env.NOTION_PARENT_PAGE_ID || process.env.NOCLICK_NOTION_PARENT_PAGE_ID
+  if (!parentPageId) return executionFailure('parent_page_required', 'Notion parent page ID가 필요합니다.')
+
+  const page = await fetchJson('https://api.notion.com/v1/pages', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${connection.accessToken}`,
+      'Content-Type': 'application/json',
+      'Notion-Version': '2022-06-28',
+    },
+    body: JSON.stringify({
+      parent: { page_id: parentPageId },
+      properties: {
+        title: {
+          title: [{ text: { content: step.input.title || step.title } }],
+        },
+      },
+      children: [
+        {
+          object: 'block',
+          type: 'paragraph',
+          paragraph: {
+            rich_text: [{ text: { content: step.input.body || step.input.description || run.prompt } }],
+          },
+        },
+      ],
+    }),
+  })
+  return { ok: true, message: 'Notion 페이지가 생성되었습니다.', externalId: page.id, link: page.url }
+}
+
+async function executeSlackMessage(store, run, step) {
+  const connection = getConnection(store, run.userId, 'slack')
+  if (!connection?.accessToken) return executionFailure('connection_required', 'Slack 연결이 필요합니다.')
+
+  const channel = step.input.channel || process.env.SLACK_DEFAULT_CHANNEL_ID
+  if (!channel) return executionFailure('channel_required', 'Slack 채널 ID가 필요합니다.')
+
+  const result = await fetchJson('https://slack.com/api/chat.postMessage', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${connection.accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      channel,
+      text: step.input.body || step.preview || run.prompt,
+    }),
+  })
+  if (!result.ok) return executionFailure(result.error || 'slack_error', result.error || 'Slack 메시지 전송 실패')
+  return { ok: true, message: 'Slack 메시지가 전송되었습니다.', externalId: result.ts, channel: result.channel }
+}
+
+async function executeTelegramMessage(_store, run, step) {
+  const botToken = process.env.TELEGRAM_BOT_TOKEN
+  const chatId = step.input.chatId || process.env.TELEGRAM_DEFAULT_CHAT_ID
+  if (!botToken || !chatId) return executionFailure('telegram_not_configured', 'Telegram Bot Token과 Chat ID가 필요합니다.')
+
+  const result = await fetchJson(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chat_id: chatId,
+      text: step.input.body || step.preview || run.prompt,
+    }),
+  })
+  return { ok: true, message: 'Telegram 메시지가 전송되었습니다.', externalId: result.result?.message_id }
+}
+
+async function executeKakaoShare(store, run, step) {
+  const connection = getConnection(store, run.userId, 'kakao')
+  if (!connection?.accessToken) {
+    return {
+      ok: false,
+      code: 'share_required',
+      message: '카카오톡은 API 연결이 없으면 Android 공유창으로 최종 전송해야 합니다.',
+      shareText: step.input.body || step.preview || run.prompt,
+    }
+  }
+  return {
+    ok: false,
+    code: 'kakao_manual_review',
+    message: 'Kakao Message API 수신자/템플릿 설정이 필요합니다. 현재는 공유창 fallback을 사용하세요.',
+    shareText: step.input.body || step.preview || run.prompt,
+  }
+}
+
+function executionFailure(code, message) {
+  return { ok: false, code, message }
+}
+
+async function executeStep(store, run, step) {
+  if (step.provider === 'google-calendar') return executeGoogleCalendar(store, run, step)
+  if (step.provider === 'gmail') return executeGmailDraft(store, run, step)
+  if (step.provider === 'notion') return executeNotionPage(store, run, step)
+  if (step.provider === 'slack') return executeSlackMessage(store, run, step)
+  if (step.provider === 'telegram') return executeTelegramMessage(store, run, step)
+  if (step.provider === 'kakao') return executeKakaoShare(store, run, step)
+  return executionFailure('unsupported_provider', '지원하지 않는 커넥터입니다.')
+}
+
+async function executeRun(store, run) {
+  for (const step of run.steps) {
+    if (step.status === 'blocked' || step.status === 'done' || step.status === 'failed') continue
+    if (step.status === 'needs_approval') continue
+
+    step.status = 'running'
+    const result = await executeStep(store, run, step)
+    step.result = result
+    step.status = result.ok ? 'done' : 'failed'
+  }
+
+  const pendingApproval = run.steps.some((step) => step.status === 'needs_approval')
+  const failed = run.steps.some((step) => step.status === 'failed')
+  const running = run.steps.some((step) => step.status === 'running')
+  run.status = running ? 'running' : pendingApproval ? 'needs_approval' : failed ? 'failed' : 'done'
+  run.updatedAt = new Date().toISOString()
+  return run
+}
+
+function approveRun(run, stepId) {
+  run.steps = run.steps.map((step) => {
+    if (step.status !== 'needs_approval') return step
+    if (stepId && step.id !== stepId) return step
+    return { ...step, status: 'approved' }
+  })
+  run.status = run.steps.some((step) => step.status === 'needs_approval') ? 'needs_approval' : 'ready'
+  run.updatedAt = new Date().toISOString()
+  return run
+}
+
+function userRuns(store, userId) {
+  return Object.values(store.runs)
+    .filter((run) => run.userId === userId)
+    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+    .slice(0, 20)
+}
+
+async function handleRuns(request, response, url) {
+  const store = await readStore()
+  const auth = requireUserAccess(request, store)
+  if (!auth) {
+    sendJson(response, 401, { error: 'unauthorized' })
+    return
+  }
+  if (auth.paymentRequired) {
+    sendJson(response, 402, { error: 'subscription_required' })
+    return
+  }
+
+  if (url.pathname === '/v1/runs' && request.method === 'GET') {
+    sendJson(response, 200, { ok: true, runs: userRuns(store, auth.user.id) })
+    return
+  }
+
+  if (url.pathname === '/v1/runs' && request.method === 'POST') {
+    const body = await readBody(request)
+    const prompt = String(body.prompt || '').trim()
+    if (!prompt) {
+      sendJson(response, 400, { error: 'prompt_required' })
+      return
+    }
+    const run = await createAiRun(auth.user.id, prompt)
+    store.runs[run.id] = run
+    await writeStore(store)
+    sendJson(response, 201, { ok: true, run })
+    return
+  }
+
+  const runMatch = url.pathname.match(/^\/v1\/runs\/([^/]+)(?:\/([^/]+))?$/)
+  if (!runMatch) {
+    sendJson(response, 404, { error: 'not_found' })
+    return
+  }
+
+  const run = store.runs[runMatch[1]]
+  if (!run || run.userId !== auth.user.id) {
+    sendJson(response, 404, { error: 'run_not_found' })
+    return
+  }
+
+  if (!runMatch[2] && request.method === 'GET') {
+    sendJson(response, 200, { ok: true, run })
+    return
+  }
+
+  if (runMatch[2] === 'approve' && request.method === 'POST') {
+    const body = await readBody(request)
+    approveRun(run, body.stepId ? String(body.stepId) : '')
+    await writeStore(store)
+    sendJson(response, 200, { ok: true, run })
+    return
+  }
+
+  if (runMatch[2] === 'execute' && request.method === 'POST') {
+    await executeRun(store, run)
+    await writeStore(store)
+    sendJson(response, 200, { ok: true, run })
+    return
+  }
+
+  sendJson(response, 405, { error: 'method_not_allowed' })
+}
+
+function looksLikeApproval(message) {
+  return /승인|좋아|진행|실행|go|approve/i.test(message)
+}
+
+function looksLikeExecuteOnly(message) {
+  return /실행|시작|run/i.test(message) && !/승인/i.test(message)
+}
+
+async function handleChat(request, response) {
+  if (request.method !== 'POST') {
+    sendJson(response, 405, { error: 'method_not_allowed' })
+    return
+  }
+
+  const store = await readStore()
+  const auth = requireUserAccess(request, store)
+  if (!auth) {
+    sendJson(response, 401, { error: 'unauthorized' })
+    return
+  }
+  if (auth.paymentRequired) {
+    sendJson(response, 402, { error: 'subscription_required' })
+    return
+  }
+
+  const body = await readBody(request)
+  const message = String(body.message || '').trim()
+  const runId = String(body.runId || '').trim()
+  if (!message) {
+    sendJson(response, 400, { error: 'message_required' })
+    return
+  }
+
+  if (runId && store.runs[runId]?.userId === auth.user.id && looksLikeApproval(message)) {
+    const run = store.runs[runId]
+    approveRun(run, '')
+    if (looksLikeExecuteOnly(message) || /실행/.test(message)) await executeRun(store, run)
+    await writeStore(store)
+    sendJson(response, 200, {
+      ok: true,
+      assistantMessage:
+        run.status === 'done'
+          ? '승인된 작업을 실행했습니다.'
+          : '승인 가능한 단계를 승인했습니다. 이제 실행할 수 있습니다.',
+      run,
+      connectors: connectorStatuses(store, auth.user.id),
+    })
+    return
+  }
+
+  const run = await createAiRun(auth.user.id, message)
+  store.runs[run.id] = run
+  await writeStore(store)
+  sendJson(response, 201, {
+    ok: true,
+    assistantMessage: run.assistantMessage,
+    run,
+    connectors: connectorStatuses(store, auth.user.id),
+  })
+}
+
 async function handleRequest(request, response) {
   const protocol = TLS_KEY_PATH && TLS_CERT_PATH ? 'https' : 'http'
   const url = new URL(request.url || '/', `${protocol}://${request.headers.host || `${HOST}:${PORT}`}`)
@@ -602,6 +1612,8 @@ async function handleRequest(request, response) {
       ok: true,
       service: 'noclick-sync',
       aiPlanner: true,
+      chat: true,
+      connectors: true,
       auth: true,
       billing: true,
       model: OPENAI_MODEL,
@@ -634,6 +1646,21 @@ async function handleRequest(request, response) {
 
     if (url.pathname.startsWith('/v1/billing/')) {
       await handleBilling(request, response, url)
+      return
+    }
+
+    if (url.pathname.startsWith('/v1/connectors')) {
+      await handleConnectors(request, response, url)
+      return
+    }
+
+    if (url.pathname === '/v1/chat') {
+      await handleChat(request, response)
+      return
+    }
+
+    if (url.pathname === '/v1/runs' || url.pathname.startsWith('/v1/runs/')) {
+      await handleRuns(request, response, url)
       return
     }
 

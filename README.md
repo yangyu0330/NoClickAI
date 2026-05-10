@@ -1,6 +1,6 @@
 # NoClick AI
 
-NoClick AI는 자연어 목적 입력으로 실행 계획, 위험도별 승인, 자동화 로그, 기기 간 동기화를 제공하는 상용화 기반 앱입니다.
+NoClick AI는 채팅 한 줄로 실행 계획, 앱 연결, 위험도별 승인, 실제 커넥터 실행, 기기 간 동기화를 제공하는 상용화 기반 앱입니다.
 
 하나의 React 코어를 공유하고 아래 세 가지 형태로 실행합니다.
 
@@ -10,17 +10,14 @@ NoClick AI는 자연어 목적 입력으로 실행 계획, 위험도별 승인, 
 
 ## 핵심 기능
 
-- 자연어 목적 입력과 대표 예시 3개
-- AI 실행 계획 카드: 목표, 마감일, 필요한 앱, 단계, 위험도
-- 개인 API Key 입력: 코드에 하드코딩하지 않고 로컬 기기에만 저장
-- 개인 API Key 기반 AI 플래너: Sync 서버의 `/v1/plan` 프록시를 통해 OpenAI Responses API 호출, 실패 시 규칙 기반 플래너로 자동 대체
-- OAuth 연결 상태 관리: Google Calendar, Gmail, Notion, Slack, Discord, Browser Agent
+- 채팅 중심 자동화: 요청, 계획, 승인, 실행 결과를 한 화면에서 처리
+- AI 실행 엔진: 요청을 Calendar/Gmail/Notion/Slack/Telegram/KakaoTalk tool call로 변환
+- 서버 OpenAI 키 기반 AI 플래너: 사용자가 API 키를 입력하지 않아도 `/v1/chat`과 `/v1/runs`로 실행 계획 생성
+- OAuth 연결: Google Calendar/Gmail, Notion, Slack, KakaoTalk
+- Bot/Share 연동: Telegram Bot, KakaoTalk 공유 fallback
 - 위험도별 승인 정책: 낮음, 승인, 개별 승인, 차단
-- 실행 로그, 완료 히스토리, 히스토리 검색, 로컬 저장/복원
-- 자동화 템플릿 저장/삭제/실행
-- 백업/복원: JSON 내보내기와 가져오기
+- 실행 로그, 실행 단계 상태, 로컬 채팅 저장
 - Sync 서버 연동: Android 앱, 데스크톱 프로그램, 웹앱 사이에서 작업 상태와 템플릿 동기화
-- 제품 성과 지표: 누적 절감 시간, 절감 클릭 수, 완료 실행 수, 고위험 승인 항목
 
 ## 빠른 실행
 
@@ -33,9 +30,7 @@ npm run dev:full
 - Sync API: `http://127.0.0.1:8788`
 - 개발용 Sync 토큰: `dev-sync-token`
 
-앱의 `기기 연동` 패널에서 서버 주소, 워크스페이스 ID, Sync 토큰을 입력한 뒤 `업로드`와 `가져오기`로 연동합니다. 개인 API Key는 보안상 동기화하지 않습니다.
-
-AI 플래너를 쓰려면 개인 API Key를 저장하고 Sync 서버 설정을 완료한 뒤 `AI 계획 생성`을 누릅니다. 서버는 API Key를 저장하지 않고 요청 1회에만 사용합니다.
+앱에서 가입/로그인한 뒤 채팅창에 자동화 요청을 입력합니다. 서비스별 OAuth Client ID/Secret이 설정되어 있으면 앱 연결 버튼으로 Google, Notion, Slack, KakaoTalk 권한을 연결할 수 있습니다.
 
 ## 빌드와 검증
 
@@ -79,6 +74,14 @@ API:
 - `POST /v1/auth/register`
 - `POST /v1/auth/login`
 - `GET /v1/auth/me`
+- `POST /v1/chat`
+- `GET /v1/runs`
+- `POST /v1/runs`
+- `POST /v1/runs/:runId/approve`
+- `POST /v1/runs/:runId/execute`
+- `GET /v1/connectors`
+- `GET /v1/connectors/:provider/start`
+- `POST /v1/connectors/:provider/disconnect`
 - `POST /v1/billing/checkout`
 - `POST /v1/billing/portal`
 - `POST /v1/billing/webhook`
@@ -86,7 +89,7 @@ API:
 - `PUT /v1/state`
 - `POST /v1/plan`
 
-Sync와 AI 계획 요청에는 로그인 세션 토큰 또는 `Authorization: Bearer <NOCLICK_SYNC_TOKEN>`이 필요합니다. 서버 데이터는 기본적으로 `server/data/workspaces.json`에 저장되며, 이 폴더는 Git에 포함하지 않습니다.
+Chat, Runs, Connectors, Sync 요청에는 로그인 세션 토큰 또는 `Authorization: Bearer <NOCLICK_SYNC_TOKEN>`이 필요합니다. 서버 데이터는 기본적으로 `server/data/workspaces.json`에 저장되며, 이 폴더는 Git에 포함하지 않습니다.
 
 `POST /v1/plan`은 추가로 `X-OpenAI-Key` 헤더를 사용합니다. 이 값은 서버에 저장하지 않습니다.
 
@@ -102,12 +105,13 @@ HTTPS, Stripe 구독, Android 릴리스 서명, Windows 코드 서명 설정은 
 
 ## 실제 서비스화 연결 지점
 
-현재 외부 앱 실행은 안전한 승인 기반 데모 모드입니다. 상용 서비스에서는 아래 어댑터를 서버 API 뒤에 붙입니다.
+현재 외부 앱 실행은 안전한 승인 기반 커넥터 모드입니다. 비밀값이 설정된 서비스는 실제 API를 호출하고, 미설정 서비스는 연결 필요/설정 필요 상태를 반환합니다.
 
 - Google Calendar API: 일정 조회, 일정 생성
-- Gmail API: 메일 초안 생성, 사용자 승인 후 발송
-- Notion API 또는 Google Docs API: 할 일 보드와 문서 초안 생성
-- Slack/Discord API: 메시지 초안, 예약 발송
-- Playwright 기반 Browser Agent: 제출 폼 입력, 최종 제출 전 사용자 승인
+- Gmail API: 메일 초안 생성
+- Notion API: 페이지 생성
+- Slack API: 승인 후 메시지 전송
+- Telegram Bot API: 봇 메시지 전송
+- KakaoTalk: Kakao API 또는 공유창 fallback
 
 민감 작업인 결제, 송금, 개인정보 대량 전송, 삭제 작업은 기본 차단 정책을 유지합니다.

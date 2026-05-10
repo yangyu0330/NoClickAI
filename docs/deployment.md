@@ -9,10 +9,29 @@ Create `.env` on the server. Do not commit it.
 ```env
 NOCLICK_SYNC_TOKEN=replace-with-32-byte-random-token
 NOCLICK_PUBLIC_APP_URL=https://app.your-domain.example
+NOCLICK_SERVER_BASE_URL=https://api.your-domain.example
 NOCLICK_ALLOWED_ORIGIN=https://app.your-domain.example
 NOCLICK_REQUIRE_SUBSCRIPTION=true
+NOCLICK_TOKEN_ENCRYPTION_KEY=replace-with-long-token-encryption-secret
 OPENAI_API_KEY=sk-...
 NOCLICK_OPENAI_MODEL=gpt-5-nano
+
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+GOOGLE_REDIRECT_URI=https://api.your-domain.example/v1/connectors/google/callback
+NOTION_CLIENT_ID=...
+NOTION_CLIENT_SECRET=...
+NOTION_REDIRECT_URI=https://api.your-domain.example/v1/connectors/notion/callback
+NOTION_PARENT_PAGE_ID=...
+SLACK_CLIENT_ID=...
+SLACK_CLIENT_SECRET=...
+SLACK_REDIRECT_URI=https://api.your-domain.example/v1/connectors/slack/callback
+SLACK_DEFAULT_CHANNEL_ID=...
+TELEGRAM_BOT_TOKEN=...
+TELEGRAM_DEFAULT_CHAT_ID=...
+KAKAO_CLIENT_ID=...
+KAKAO_CLIENT_SECRET=...
+KAKAO_REDIRECT_URI=https://api.your-domain.example/v1/connectors/kakao/callback
 
 STRIPE_SECRET_KEY=sk_live_...
 STRIPE_PRICE_ID=price_...
@@ -51,6 +70,23 @@ The server provides:
 - `GET /v1/auth/me`
 
 The app stores the session token locally and uses it for sync and AI planning. The old `NOCLICK_SYNC_TOKEN` still works as an admin/dev token.
+
+## Chat Automation and Connectors
+
+The server provides:
+
+- `POST /v1/chat`
+- `GET /v1/runs`
+- `POST /v1/runs`
+- `GET /v1/runs/:runId`
+- `POST /v1/runs/:runId/approve`
+- `POST /v1/runs/:runId/execute`
+- `GET /v1/connectors`
+- `GET /v1/connectors/:provider/start`
+- `GET /v1/connectors/:provider/callback`
+- `POST /v1/connectors/:provider/disconnect`
+
+Google Calendar and Gmail share the Google OAuth connection. Telegram uses a bot token and default chat ID. KakaoTalk falls back to Android/share UI when the Message API cannot directly target a chat.
 
 ## Stripe Billing
 
