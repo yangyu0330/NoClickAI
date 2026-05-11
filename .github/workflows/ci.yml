@@ -45,6 +45,9 @@ jobs:
       - name: Check audit script syntax
         run: node --check scripts/production-audit.mjs
 
+      - name: Dependency audit
+        run: npm audit --audit-level=high
+
       - name: Lint
         run: npm run lint
 

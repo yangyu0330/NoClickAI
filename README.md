@@ -76,7 +76,7 @@ npm run lint
 npm run build
 ```
 
-The GitHub Actions CI workflow runs `npm ci`, server syntax checks, audit-script syntax checks, lint, and build on pushes to `main` and pull requests.
+The GitHub Actions CI workflow runs `npm ci`, server syntax checks, audit-script syntax checks, high-severity dependency audit, lint, and build on pushes to `main` and pull requests.
 
 Audit the production deployment:
 
