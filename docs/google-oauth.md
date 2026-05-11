@@ -36,6 +36,8 @@ NOCLICK_ENABLE_GMAIL_DRAFTS=false
 
 Then redeploy production.
 
+`GET /v1/readiness` checks that `GOOGLE_REDIRECT_URI` exactly matches `${NOCLICK_SERVER_BASE_URL}/v1/connectors/google/callback` and uses HTTPS. The same exact URI must be present in the Google Cloud OAuth web client's authorized redirect URIs.
+
 Default public scope set:
 
 - `openid`

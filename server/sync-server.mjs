@@ -1188,6 +1188,30 @@ function tokenEncryptionKeyReadinessItem() {
   )
 }
 
+function googleRedirectUriReadinessItem() {
+  const redirectUri = OAUTH_PROVIDERS.google.redirectUri
+  const expectedRedirectUri = `${SERVER_BASE_URL}/v1/connectors/google/callback`
+  const exactMatch = redirectUri === expectedRedirectUri
+  const usesHttps = redirectUri.startsWith('https://')
+  const ready = exactMatch && usesHttps
+
+  return readinessItem(
+    'GOOGLE_REDIRECT_URI',
+    'google',
+    'Google OAuth redirect URI',
+    ready ? 'ready' : 'missing',
+    ready
+      ? `Google redirect URI matches ${expectedRedirectUri}.`
+      : exactMatch
+        ? `Google redirect URI matches ${expectedRedirectUri}, but it is not HTTPS.`
+        : `Google redirect URI is ${redirectUri || 'missing'}; expected ${expectedRedirectUri}.`,
+    ready
+      ? ''
+      : 'Set GOOGLE_REDIRECT_URI to the production callback URL and add the exact same URI to the Google Cloud OAuth web client.',
+    { launchBlocking: !ready },
+  )
+}
+
 function releaseAssetUrl(asset) {
   return `${RELEASE_BASE_URL}/${asset.fileName}`
 }
@@ -1449,6 +1473,7 @@ async function productionReadinessReport(store, userId) {
       ALLOWED_ORIGIN && ALLOWED_ORIGIN !== '*' ? '' : 'Set NOCLICK_ALLOWED_ORIGIN to the production app URL before public launch.',
       { launchBlocking: !(ALLOWED_ORIGIN && ALLOWED_ORIGIN !== '*') },
     ),
+    googleRedirectUriReadinessItem(),
     attestedManualItem({
       id: 'GOOGLE_OAUTH_VERIFICATION',
       category: 'google',

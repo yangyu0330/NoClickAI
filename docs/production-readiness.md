@@ -37,6 +37,7 @@
 
 2. Google OAuth
    - Authorized redirect URI: `https://noclickai-zeta.vercel.app/v1/connectors/google/callback`
+   - `GOOGLE_REDIRECT_URI`는 `${NOCLICK_SERVER_BASE_URL}/v1/connectors/google/callback`과 정확히 일치해야 하며 HTTPS여야 합니다.
    - 테스트 모드에서는 사용할 Google 계정을 test user로 추가해야 합니다.
    - 공개 상용 서비스 전에는 Google OAuth app verification을 완료해야 합니다.
    - 검증 완료 후 `NOCLICK_GOOGLE_OAUTH_VERIFIED=true`를 Vercel Production에 설정합니다.
