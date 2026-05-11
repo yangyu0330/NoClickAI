@@ -146,6 +146,17 @@ type ReadinessReport = {
   generatedAt: string
   publicAppUrl: string
   serverBaseUrl: string
+  release?: {
+    tag: string
+    pageUrl: string
+    downloadsUrl: string
+    assets: {
+      id: string
+      label: string
+      fileName: string
+      url: string
+    }[]
+  }
   summary: {
     ready: number
     missing: number
@@ -844,6 +855,11 @@ function AppShell() {
                   <span>주의 {readiness.summary.warning}</span>
                   <span>수동 {readiness.summary.manual}</span>
                 </div>
+                {readiness.release && (
+                  <p className="fine-print">
+                    릴리스 {readiness.release.tag} / <a href={readiness.release.downloadsUrl}>다운로드</a>
+                  </p>
+                )}
                 <div className="readiness-list">
                   {readiness.items
                     .filter((item) => item.status !== 'ready')

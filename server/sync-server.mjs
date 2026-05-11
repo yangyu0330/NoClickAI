@@ -46,6 +46,31 @@ const OPENAI_REQUEST_TIMEOUT_MS = Number(process.env.NOCLICK_OPENAI_TIMEOUT_MS |
 const STORE_ID = 'default'
 const STORE_TABLE = 'noclick_store'
 const STORAGE_TARGET = DATABASE_URL ? `postgres:${STORE_TABLE}/${STORE_ID}` : DATA_FILE
+const RELEASE_TAG = process.env.NOCLICK_RELEASE_TAG || 'v0.1.0-internal.1'
+const RELEASE_BASE_URL = `https://github.com/yangyu0330/NoClickAI/releases/download/${RELEASE_TAG}`
+const RELEASE_PAGE_URL = `https://github.com/yangyu0330/NoClickAI/releases/tag/${RELEASE_TAG}`
+const RELEASE_ASSETS = [
+  {
+    id: 'android-apk',
+    label: 'Android APK',
+    fileName: `NoClickAI-Android-${RELEASE_TAG}.apk`,
+  },
+  {
+    id: 'android-aab',
+    label: 'Android AAB',
+    fileName: `NoClickAI-Android-${RELEASE_TAG}.aab`,
+  },
+  {
+    id: 'windows-installer',
+    label: 'Windows installer',
+    fileName: `NoClickAI-Windows-Setup-${RELEASE_TAG}.exe`,
+  },
+  {
+    id: 'sha256sums',
+    label: 'Release checksums',
+    fileName: 'SHA256SUMS.txt',
+  },
+]
 const buckets = new Map()
 let postgresClient = null
 let postgresStoreReady = false
@@ -861,6 +886,70 @@ function envConfiguredItem(name, category, label, detail = '') {
   )
 }
 
+function releaseAssetUrl(asset) {
+  return `${RELEASE_BASE_URL}/${asset.fileName}`
+}
+
+async function checkHttpUrl(url) {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 6_000)
+  try {
+    const result = await fetch(url, {
+      method: 'HEAD',
+      redirect: 'follow',
+      signal: controller.signal,
+    })
+    return { ok: result.ok, status: result.status }
+  } catch (error) {
+    return {
+      ok: false,
+      status: 0,
+      error: error instanceof Error ? error.message : 'request_failed',
+    }
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+async function releaseReadinessItems() {
+  const checks = await Promise.all([
+    checkHttpUrl(`${PUBLIC_APP_URL}/downloads`).then((check) => ({
+      id: 'DOWNLOADS_URL',
+      category: 'apps',
+      label: 'Downloads page',
+      url: `${PUBLIC_APP_URL}/downloads`,
+      ...check,
+    })),
+    checkHttpUrl(RELEASE_PAGE_URL).then((check) => ({
+      id: 'GITHUB_RELEASE',
+      category: 'apps',
+      label: 'GitHub release',
+      url: RELEASE_PAGE_URL,
+      ...check,
+    })),
+    ...RELEASE_ASSETS.map((asset) =>
+      checkHttpUrl(releaseAssetUrl(asset)).then((check) => ({
+        id: `release:${asset.id}`,
+        category: 'apps',
+        label: asset.label,
+        url: releaseAssetUrl(asset),
+        ...check,
+      })),
+    ),
+  ])
+
+  return checks.map((check) =>
+    readinessItem(
+      check.id,
+      check.category,
+      check.label,
+      check.ok ? 'ready' : 'warning',
+      check.ok ? `${check.url} is reachable.` : `${check.url} did not return a successful response${check.status ? ` (HTTP ${check.status})` : ''}.`,
+      check.ok ? '' : 'Re-publish the release artifact or update NOCLICK_RELEASE_TAG.',
+    ),
+  )
+}
+
 function connectorReadinessItems(store, userId) {
   return connectorStatuses(store, userId).flatMap((connector) => {
     const items = [
@@ -908,7 +997,7 @@ function connectorReadinessItems(store, userId) {
   })
 }
 
-function productionReadinessReport(store, userId) {
+async function productionReadinessReport(store, userId) {
   const items = [
     envConfiguredItem('OPENAI_API_KEY', 'core', 'OpenAI API key'),
     envConfiguredItem('DATABASE_URL', 'core', 'Postgres database'),
@@ -953,6 +1042,7 @@ function productionReadinessReport(store, userId) {
       `${PUBLIC_APP_URL}/terms is available for OAuth consent screens and app review.`,
       '',
     ),
+    ...(await releaseReadinessItems()),
     ...connectorReadinessItems(store, userId),
     envConfiguredItem('STRIPE_SECRET_KEY', 'billing', 'Stripe secret key'),
     envConfiguredItem('STRIPE_PRICE_ID', 'billing', 'Stripe recurring price'),
@@ -993,10 +1083,21 @@ function productionReadinessReport(store, userId) {
 
   return {
     ok: true,
-    productionReady: summary.missing === 0 && summary.warning === 0,
+    productionReady: summary.missing === 0 && summary.warning === 0 && summary.manual === 0,
     generatedAt: new Date().toISOString(),
     publicAppUrl: PUBLIC_APP_URL,
     serverBaseUrl: SERVER_BASE_URL,
+    release: {
+      tag: RELEASE_TAG,
+      pageUrl: RELEASE_PAGE_URL,
+      downloadsUrl: `${PUBLIC_APP_URL}/downloads`,
+      assets: RELEASE_ASSETS.map((asset) => ({
+        id: asset.id,
+        label: asset.label,
+        fileName: asset.fileName,
+        url: releaseAssetUrl(asset),
+      })),
+    },
     summary,
     items,
   }
@@ -2420,7 +2521,7 @@ export async function handleRequest(request, response) {
         sendJson(response, 402, { error: 'subscription_required' })
         return
       }
-      sendJson(response, 200, productionReadinessReport(store, auth.user.id))
+      sendJson(response, 200, await productionReadinessReport(store, auth.user.id))
       return
     }
 

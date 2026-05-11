@@ -12,6 +12,7 @@ NOCLICK_PUBLIC_APP_URL=https://app.your-domain.example
 NOCLICK_SERVER_BASE_URL=https://api.your-domain.example
 NOCLICK_ALLOWED_ORIGIN=https://app.your-domain.example
 VITE_NOCLICK_SERVER_BASE_URL=https://api.your-domain.example
+NOCLICK_RELEASE_TAG=v0.1.0-internal.1
 NOCLICK_REQUIRE_SUBSCRIPTION=true
 NOCLICK_TOKEN_ENCRYPTION_KEY=replace-with-long-token-encryption-secret
 OPENAI_API_KEY=sk-...
@@ -72,6 +73,8 @@ https://github.com/yangyu0330/NoClickAI/releases/tag/v0.1.0-internal.1
 ```
 
 The public web app also exposes the same release links at `/downloads`.
+
+`GET /v1/readiness` performs HEAD checks against `/downloads`, the GitHub release page, and the expected APK/AAB/Windows/checksum artifacts for `NOCLICK_RELEASE_TAG`.
 
 ## Accounts
 
