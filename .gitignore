@@ -11,6 +11,9 @@ node_modules
 dist
 dist-ssr
 release
+.tmp
+playwright-report
+test-results
 *.local
 .env
 server/data

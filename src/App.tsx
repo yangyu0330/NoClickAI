@@ -773,7 +773,7 @@ function AppShell() {
       </header>
 
       <section className="chat-layout">
-        <section className="chat-panel" aria-label="NoClick AI 채팅">
+        <section className="chat-panel" aria-label="NoClick AI 채팅" data-testid="chat-panel">
           <div className="chat-stream">
             {messages.map((message) => (
               <article className={`message ${message.role}`} key={message.id}>
@@ -807,8 +807,9 @@ function AppShell() {
               onKeyDown={handleComposerKeyDown}
               placeholder="예: 내일 오전 10시에 회의 잡고 참석자에게 메일 검토 초안 준비해줘"
               aria-label="자동화 요청"
+              data-testid="chat-input"
             />
-            <button type="button" className="send-button" onClick={() => void sendChat()} disabled={isBusy || !input.trim()}>
+            <button type="button" className="send-button" onClick={() => void sendChat()} disabled={isBusy || !input.trim()} data-testid="chat-send">
               <Send size={18} /> 보내기
             </button>
           </div>
@@ -823,7 +824,7 @@ function AppShell() {
             {authSession ? (
               <>
                 <div className="account-card">
-                  <strong>{authSession.user.email}</strong>
+                  <strong data-testid="account-email">{authSession.user.email}</strong>
                   <span>
                     {isAdminUser ? 'Admin' : authSession.user.billingPlan === 'pro' ? 'Pro' : 'Free'} /{' '}
                     {authSession.user.subscriptionStatus}
@@ -855,6 +856,7 @@ function AppShell() {
                   onChange={(event) => setEmail(event.target.value)}
                   placeholder="email@example.com"
                   aria-label="이메일"
+                  data-testid="account-email-input"
                 />
                 <input
                   type="password"
@@ -862,12 +864,13 @@ function AppShell() {
                   onChange={(event) => setPassword(event.target.value)}
                   placeholder="비밀번호 8자 이상"
                   aria-label="비밀번호"
+                  data-testid="account-password-input"
                 />
                 <div className="button-grid">
-                  <button type="submit" disabled={isBusy}>
+                  <button type="submit" disabled={isBusy} data-testid="account-login">
                     <LogIn size={16} /> 로그인
                   </button>
-                  <button type="button" onClick={() => void submitAccount('register')} disabled={isBusy}>
+                  <button type="button" onClick={() => void submitAccount('register')} disabled={isBusy} data-testid="account-register">
                     <UserPlus size={16} /> 가입
                   </button>
                 </div>
@@ -970,7 +973,7 @@ function AppShell() {
             </div>
           </section>
 
-          <section className="panel-card run-card">
+          <section className="panel-card run-card" data-testid="run-panel">
             <div className="section-title">
               <Zap size={18} />
               <h2>실행</h2>
@@ -982,16 +985,16 @@ function AppShell() {
                   <span>{activeRun.status}</span>
                 </div>
                 <div className="run-actions">
-                  <button type="button" onClick={() => void approveRun()} disabled={pendingApprovals === 0 || isBusy}>
+                  <button type="button" onClick={() => void approveRun()} disabled={pendingApprovals === 0 || isBusy} data-testid="run-approve">
                     <CheckCircle2 size={16} /> 승인 {pendingApprovals}
                   </button>
-                  <button type="button" className="primary-button" onClick={() => void executeRun()} disabled={pendingApprovals > 0 || isBusy}>
+                  <button type="button" className="primary-button" onClick={() => void executeRun()} disabled={pendingApprovals > 0 || isBusy} data-testid="run-execute">
                     <Play size={16} /> 실행
                   </button>
                 </div>
                 <div className="step-list">
                   {activeRun.steps.map((step) => (
-                    <article className="step-item" key={step.id}>
+                    <article className="step-item" key={step.id} data-testid="run-step">
                       <div className="step-head">
                         <strong>{step.title}</strong>
                         <span className={`status-pill ${statusTone(step.status)}`}>{STATUS_LABEL[step.status]}</span>
