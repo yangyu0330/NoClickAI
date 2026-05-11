@@ -184,15 +184,16 @@ async function checkReadiness(baseUrl, account) {
 async function checkKakaoShareAutomation(baseUrl, account) {
   const headers = { Authorization: `Bearer ${account.token}` }
   const verificationText = `NoClick AI audit ${crypto.randomUUID().slice(0, 8)}`
-  const prompt = `KakaoTalk으로 팀에게 '${verificationText}' 문구를 공유할 수 있게 메시지를 준비해줘. 실제 전송하지 말고 공유 텍스트만 준비해줘.`
+  const prompt = `Prepare a KakaoTalk share text for the team containing "${verificationText}". Do not send it; only prepare share text.`
 
-  const created = await fetchJson(`${baseUrl}/v1/runs`, {
+  const created = await fetchJson(`${baseUrl}/v1/chat`, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ prompt }),
+    body: JSON.stringify({ message: prompt }),
   })
-  assert(created.response.status === 201, `/v1/runs returned HTTP ${created.response.status}`)
-  assert(created.body?.run?.id, '/v1/runs did not return a run id')
+  assert(created.response.status === 201, `/v1/chat returned HTTP ${created.response.status}`)
+  assert(created.body?.run?.id, '/v1/chat did not return a run id')
+  assert(created.body?.assistantMessage, '/v1/chat did not return an assistant message')
 
   const plannedStep = created.body.run.steps?.find((step) => step.provider === 'kakao')
   assert(plannedStep, 'Kakao prompt did not produce a Kakao step')
@@ -213,7 +214,7 @@ async function checkKakaoShareAutomation(baseUrl, account) {
   assert(executedStep.result?.code === 'share_prepared', `Kakao share fallback returned ${executedStep.result?.code}`)
   assert(String(executedStep.result?.shareText || '').includes(verificationText), 'Kakao share text is missing the verification text')
 
-  resultLine('PASS', 'Kakao share automation', `run=${created.body.run.id}`)
+  resultLine('PASS', 'Kakao chat automation', `run=${created.body.run.id}`)
 }
 
 async function main() {
