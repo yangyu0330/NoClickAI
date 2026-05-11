@@ -233,6 +233,8 @@ async function checkAppShell(baseUrl) {
   const serviceWorker = await fetchText(`${baseUrl}/service-worker.js`)
   assert(serviceWorker.response.ok, `/service-worker.js returned HTTP ${serviceWorker.response.status}`)
   assert(serviceWorker.text.includes('install') && serviceWorker.text.includes('fetch'), '/service-worker.js is missing expected lifecycle handlers')
+  assert(serviceWorker.text.includes("startsWith('/v1/')"), '/service-worker.js does not exclude API routes from caching')
+  assert(serviceWorker.text.includes("headers.has('authorization')"), '/service-worker.js does not exclude authorized requests from caching')
 
   resultLine('PASS', '/', `app shell with ${jsAssets.length} JS bundle(s), ${cssAssets.length} CSS bundle(s)`)
 }

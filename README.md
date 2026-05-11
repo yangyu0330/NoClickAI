@@ -89,7 +89,7 @@ Audit the production deployment:
 npm run audit:production
 ```
 
-The audit checks `/health`, the deployed commit reported by `/health`, the root app shell with JS/CSS/PWA assets, the public review pages, the downloads page, static traversal guarding, GitHub release assets, authenticated readiness, billing API behavior, Stripe webhook signature guarding, subscription access gating when enabled, safe chat-to-Notion, chat-to-Slack, chat-to-Telegram, and chat-to-KakaoTalk prepared-content automation runs, high-risk Gmail approval gating without sending email, and account deletion cleanup using a temporary account.
+The audit checks `/health`, the deployed commit reported by `/health`, the root app shell with JS/CSS/PWA assets, service-worker API-cache exclusions, the public review pages, the downloads page, static traversal guarding, GitHub release assets, authenticated readiness, billing API behavior, Stripe webhook signature guarding, subscription access gating when enabled, safe chat-to-Notion, chat-to-Slack, chat-to-Telegram, and chat-to-KakaoTalk prepared-content automation runs, high-risk Gmail approval gating without sending email, and account deletion cleanup using a temporary account.
 
 Run the same audit concurrently to catch account/session persistence regressions under overlapping production requests:
 

@@ -107,6 +107,7 @@ gh secret set VERCEL_TOKEN --repo yangyu0330/NoClickAI --body $env:VERCEL_TOKEN
 - `/health`
 - `/health.commitSha`와 현재 git `HEAD`의 배포 일치 여부
 - `/` 앱 셸, JS/CSS 번들, PWA manifest, service worker
+- service worker의 인증 API 응답 캐시 제외
 - `/privacy`, `/terms`, `/downloads`, `/data-deletion`
 - 정적 파일 경로 traversal 차단
 - 인증된 `/v1/readiness`
