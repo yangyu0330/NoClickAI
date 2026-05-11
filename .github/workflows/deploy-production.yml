@@ -62,18 +62,27 @@ jobs:
       - name: Dependency audit
         run: npm audit --audit-level=high
 
-      - name: Lint
-        run: npm run lint
-
-      - name: Build app
-        run: npm run build
-
       - name: Verify Vercel deployment secrets
         shell: bash
         run: |
           test -n "$VERCEL_TOKEN" || { echo "Missing VERCEL_TOKEN secret"; exit 1; }
           test -n "$VERCEL_ORG_ID" || { echo "Missing VERCEL_ORG_ID secret"; exit 1; }
           test -n "$VERCEL_PROJECT_ID" || { echo "Missing VERCEL_PROJECT_ID secret"; exit 1; }
+
+      - name: Validate Vercel token
+        id: validate_vercel_token
+        shell: bash
+        run: |
+          if ! npx vercel@latest whoami --token "$VERCEL_TOKEN" >/dev/null; then
+            echo "::error::VERCEL_TOKEN is invalid or expired. Create a new Vercel account token and update the GitHub repository secret named VERCEL_TOKEN."
+            exit 1
+          fi
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build app
+        run: npm run build
 
       - name: Pull Vercel production settings
         run: npx vercel@latest pull --yes --environment=production --token "$VERCEL_TOKEN"
@@ -103,5 +112,5 @@ jobs:
           NOCLICK_AUDIT_STRICT_LAUNCH: ${{ inputs.strict_launch }}
 
       - name: Check production error logs
-        if: always()
+        if: always() && steps.validate_vercel_token.outcome == 'success'
         run: npx vercel@latest logs --level error --since 1h --environment production --no-branch --no-follow --token "$VERCEL_TOKEN"
