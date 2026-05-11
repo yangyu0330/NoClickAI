@@ -220,7 +220,7 @@ const ALLOWED_ACTIONS = {
   gmail: GMAIL_ACTIONS,
   notion: ['notion.create_page'],
   slack: ['slack.post_message'],
-  telegram: ['telegram.send_message'],
+  telegram: TELEGRAM_ACTIONS,
   kakao: ['kakao.share_text'],
 }
 
