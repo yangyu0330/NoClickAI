@@ -79,13 +79,14 @@ Validate before committing:
 ```bash
 npm run lint
 npm run build
+npm run test:launch-evidence
 npm run test:launch-env
 npm run test:billing
 npm run test:readiness
 npm run test:e2e
 ```
 
-The GitHub Actions CI workflow runs `npm ci`, server syntax checks, audit-script syntax checks, high-severity dependency audit, lint, build, local launch-env smoke, local billing webhook smoke, local readiness smoke, and a Playwright smoke test on pushes to `main` and pull requests.
+The GitHub Actions CI workflow runs `npm ci`, server syntax checks, audit-script syntax checks, high-severity dependency audit, lint, build, local launch-evidence smoke, local launch-env smoke, local billing webhook smoke, local readiness smoke, and a Playwright smoke test on pushes to `main` and pull requests.
 
 The local billing smoke starts an isolated sync server with subscription enforcement enabled, rejects an unsigned Stripe webhook, applies signed checkout, past-due, payment-recovery, and deletion events, and verifies paid routes open and close with the Stripe subscription state:
 
@@ -129,6 +130,12 @@ After the external launch work is complete, copy `.env.launch.example` to `.env.
 npm run launch:env -- --file .env.launch.local
 ```
 
+If you have signed app package evidence files, generate the non-secret evidence variables from them:
+
+```bash
+npm run launch:evidence -- --android artifacts/android/ANDROID-SIGNING-EVIDENCE.txt --android-play-console play-console-production-YYYY-MM-DD --windows artifacts/windows/WINDOWS-SIGNING-EVIDENCE.txt --google-evidence google-oauth-approved-YYYY-MM-DD --output .env.launch.local
+```
+
 To apply those values to Vercel Production, redeploy, and run the strict launch gate:
 
 ```bash
@@ -138,6 +145,7 @@ npm run launch:env -- --file .env.launch.local --apply --deploy --verify --stric
 The launch-env smoke test verifies that placeholder/test values are rejected and valid-looking launch values stay in dry-run mode unless `--apply` is explicitly present:
 
 ```bash
+npm run test:launch-evidence
 npm run test:launch-env
 ```
 

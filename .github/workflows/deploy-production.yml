@@ -78,8 +78,14 @@ jobs:
       - name: Check launch env script syntax
         run: node --check scripts/apply-launch-env.mjs
 
+      - name: Check launch evidence script syntax
+        run: node --check scripts/collect-launch-evidence.mjs
+
       - name: Check launch env smoke syntax
         run: node --check scripts/launch-env-smoke.mjs
+
+      - name: Check launch evidence smoke syntax
+        run: node --check scripts/launch-evidence-smoke.mjs
 
       - name: Check billing smoke syntax
         run: node --check scripts/billing-webhook-smoke.mjs
@@ -145,6 +151,9 @@ jobs:
 
       - name: Launch env smoke
         run: npm run test:launch-env
+
+      - name: Launch evidence smoke
+        run: npm run test:launch-evidence
 
       - name: Readiness smoke
         run: npm run test:readiness

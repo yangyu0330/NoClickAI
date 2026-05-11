@@ -164,6 +164,7 @@ npm run launch:env -- --file .env.launch.local --apply --deploy --verify --stric
 The launch-env smoke test runs locally and in CI. It verifies that placeholder/test launch values fail and valid-looking values remain a dry-run unless `--apply` is explicitly present:
 
 ```bash
+npm run test:launch-evidence
 npm run test:launch-env
 ```
 
@@ -207,6 +208,19 @@ Windows:
 Set `create_github_release=true` only after reviewing the package artifacts. The workflow will attach the APK, AAB, Windows installer, blockmap, and checksum files to the selected GitHub release tag.
 
 When `require_signing=true`, the workflow also verifies the produced Android APK with `apksigner`, verifies the Android AAB with `jarsigner`, and verifies the Windows installer with Authenticode before uploading artifacts. The uploaded artifacts include `ANDROID-SIGNING-EVIDENCE.txt` and `WINDOWS-SIGNING-EVIDENCE.txt`; use non-secret values from those files, such as the release tag plus certificate fingerprint/thumbprint, for `NOCLICK_ANDROID_RELEASE_EVIDENCE` and `NOCLICK_WINDOWS_CODE_SIGNING_EVIDENCE` after Play Console and installer distribution review are complete.
+
+After downloading signed package artifacts, generate those non-secret env values with:
+
+```bash
+npm run launch:evidence -- \
+  --android artifacts/android/ANDROID-SIGNING-EVIDENCE.txt \
+  --android-play-console play-console-production-YYYY-MM-DD \
+  --windows artifacts/windows/WINDOWS-SIGNING-EVIDENCE.txt \
+  --google-evidence google-oauth-approved-YYYY-MM-DD \
+  --output .env.launch.local
+```
+
+The Android command requires a Play Console marker because build signing alone is not enough for public launch readiness.
 
 ## Accounts
 
