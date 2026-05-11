@@ -248,6 +248,7 @@ function newMessage(role: ChatMessage['role'], text: string): ChatMessage {
 function connectorCopy(connector: ConnectorStatus) {
   if (!connector.configured && connector.missingConfig?.length) return `${connector.missingConfig.join(', ')} 필요`
   if (!connector.configured) return '서버 설정 필요'
+  if (connector.type === 'share') return '공유 fallback 준비됨'
   if (connector.connected) return '연결됨'
   if (connector.id === 'telegram') return 'Bot 설정 필요'
   return '연결 필요'
@@ -612,6 +613,13 @@ function AppShell() {
   }
 
   const connectProvider = async (connector: ConnectorStatus) => {
+    if (connector.type === 'share') {
+      setMessages((items) => [
+        ...items,
+        newMessage('assistant', `${connector.name}은 계정 연결 없이 실행 결과의 공유 버튼으로 Android 공유창이나 클립보드 fallback을 사용합니다.`),
+      ])
+      return
+    }
     if (connector.id === 'telegram') {
       setMessages((items) => [
         ...items,
@@ -936,23 +944,26 @@ function AppShell() {
               {connectors.length === 0 ? (
                 <p className="fine-print">로그인하면 연결 가능한 앱이 표시됩니다.</p>
               ) : (
-                connectors.map((connector) => (
-                  <div className="connector-item" key={connector.id}>
-                    <div>
-                      <strong>{connector.name}</strong>
-                      <span>{connectorCopy(connector)}</span>
+                connectors.map((connector) => {
+                  const shareFallback = connector.type === 'share'
+                  return (
+                    <div className="connector-item" key={connector.id}>
+                      <div>
+                        <strong>{connector.name}</strong>
+                        <span>{connectorCopy(connector)}</span>
+                      </div>
+                      {connector.connected ? (
+                        <button type="button" onClick={() => void disconnectProvider(connector)}>
+                          <Unlink size={15} /> 해제
+                        </button>
+                      ) : (
+                        <button type="button" onClick={() => void connectProvider(connector)} disabled={!connector.configured && connector.id !== 'telegram'}>
+                          <ChevronRight size={15} /> {shareFallback ? '안내' : '연결'}
+                        </button>
+                      )}
                     </div>
-                    {connector.connected ? (
-                      <button type="button" onClick={() => void disconnectProvider(connector)}>
-                        <Unlink size={15} /> 해제
-                      </button>
-                    ) : (
-                      <button type="button" onClick={() => void connectProvider(connector)} disabled={!connector.configured && connector.id !== 'telegram'}>
-                        <ChevronRight size={15} /> 연결
-                      </button>
-                    )}
-                  </div>
-                ))
+                  )
+                })
               )}
             </div>
           </section>

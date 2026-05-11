@@ -154,9 +154,9 @@ const CONNECTOR_DEFINITIONS = [
     id: 'kakao',
     tokenProvider: 'kakao',
     name: 'KakaoTalk',
-    type: 'oauth_or_share',
+    type: 'share',
     actions: ['kakao.share_text'],
-    configured: () => Boolean(process.env.KAKAO_CLIENT_ID && process.env.KAKAO_CLIENT_SECRET),
+    configured: () => true,
   },
 ]
 
@@ -942,7 +942,7 @@ function connectorStatuses(store, userId) {
     const providerKey = oauthProviderFromConnector(definition.id)
     const oauthProvider = OAUTH_PROVIDERS[providerKey]
     const missingConfig =
-      definition.type === 'bot'
+      definition.type === 'bot' || definition.type === 'share'
         ? []
         : [
             oauthProvider?.clientId ? '' : `${providerKey.toUpperCase()}_CLIENT_ID`,
@@ -960,7 +960,7 @@ function connectorStatuses(store, userId) {
       actions: definition.actions,
       configured: definition.configured(),
       connected,
-      needsOAuth: definition.type === 'oauth' || definition.type === 'oauth_or_share',
+      needsOAuth: definition.type === 'oauth' || (definition.type === 'oauth_or_share' && definition.configured()),
       redirectUri: oauthProvider?.redirectUri || '',
       scopes: oauthProvider?.scopes || [],
       missingConfig,
@@ -1126,6 +1126,19 @@ async function releaseReadinessItems() {
 
 function connectorReadinessItems(store, userId) {
   return connectorStatuses(store, userId).flatMap((connector) => {
+    if (connector.type === 'share') {
+      return [
+        readinessItem(
+          `${connector.id}:configured`,
+          'connectors',
+          `${connector.name} share fallback`,
+          'ready',
+          `${connector.name} uses browser and Android share fallback, so server credentials are not required for prepared share text.`,
+          '',
+        ),
+      ]
+    }
+
     const items = [
       readinessItem(
         `${connector.id}:configured`,
@@ -2347,20 +2360,11 @@ async function executeTelegramMessage(_store, run, step) {
   return { ok: true, message: 'Telegram 메시지가 전송되었습니다.', externalId: result.result?.message_id }
 }
 
-async function executeKakaoShare(store, run, step) {
-  const connection = getConnection(store, run.userId, 'kakao')
-  if (!connection?.accessToken) {
-    return {
-      ok: false,
-      code: 'share_required',
-      message: '카카오톡은 API 연결이 없으면 Android 공유창으로 최종 전송해야 합니다.',
-      shareText: step.input.body || step.preview || run.prompt,
-    }
-  }
+async function executeKakaoShare(_store, run, step) {
   return {
-    ok: false,
-    code: 'kakao_manual_review',
-    message: 'Kakao Message API 수신자/템플릿 설정이 필요합니다. 현재는 공유창 fallback을 사용하세요.',
+    ok: true,
+    code: 'share_prepared',
+    message: 'KakaoTalk 공유용 텍스트가 NoClick AI 안에 준비되었습니다. 공유 버튼으로 전송하세요.',
     shareText: step.input.body || step.preview || run.prompt,
   }
 }

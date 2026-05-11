@@ -1,6 +1,6 @@
 # NoClick AI
 
-NoClick AI is a chat-first automation assistant. The intended user experience is simple: the user types what they want done, the app creates an execution plan, asks for approval when an action is risky, and then runs connected tools such as Google Calendar, Gmail, Notion, Slack, Telegram, or KakaoTalk when those provider credentials are configured.
+NoClick AI is a chat-first automation assistant. The intended user experience is simple: the user types what they want done, the app creates an execution plan, asks for approval when an action is risky, and then runs connected tools such as Google Calendar, Gmail, Notion, Slack, and Telegram when provider credentials are configured. KakaoTalk uses a browser/Android share fallback for prepared share text.
 
 The project shares one React app across:
 
@@ -31,6 +31,7 @@ Implemented:
 - Google OAuth connection for Calendar and Gmail
 - Gmail send support with explicit high-risk approval
 - In-app Gmail review drafts without requesting the restricted `gmail.compose` scope by default
+- KakaoTalk prepared-share fallback without server credentials
 - Stripe billing endpoints and webhook handling
 - Neon Postgres storage in production
 - Public review pages for privacy, terms, downloads, and data deletion
@@ -42,7 +43,8 @@ Still required before public commercial launch:
 
 - Google OAuth public verification
 - Stripe live secret, recurring Price ID, and webhook secret
-- Production credentials for Notion, Slack, Telegram, and KakaoTalk
+- Production credentials for Notion, Slack, and Telegram
+- Optional Kakao direct Message API credentials if direct Kakao API delivery is required beyond the share fallback
 - Publicly trusted Windows code-signing certificate
 - Store review/distribution for Android and Windows
 
