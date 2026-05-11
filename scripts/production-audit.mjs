@@ -131,6 +131,11 @@ function resultLine(status, label, detail = '') {
   console.log(`${status.padEnd(7)} ${label}${suffix}`)
 }
 
+function extractAssetPaths(html, attribute) {
+  const pattern = new RegExp(`${attribute}="([^"]+)"`, 'g')
+  return [...html.matchAll(pattern)].map((match) => match[1]).filter((value) => value.startsWith('/'))
+}
+
 function commitMatches(actual, expected) {
   if (!actual || !expected) return false
   return actual === expected || actual.startsWith(expected) || expected.startsWith(actual)
@@ -200,6 +205,36 @@ async function checkPublicPage(baseUrl, path, requiredText) {
   assert(response.ok, `${path} returned HTTP ${response.status}`)
   assert(missing.length === 0, `${path} is missing required text: ${missing.join(', ')}`)
   resultLine('PASS', path, `HTTP ${response.status}`)
+}
+
+async function checkAppShell(baseUrl) {
+  const { response, text } = await fetchText(`${baseUrl}/`)
+  assert(response.ok, `/ returned HTTP ${response.status}`)
+  assert(text.includes('<title>NoClick AI</title>'), '/ is missing NoClick AI title')
+  assert(text.includes('<div id="root"></div>'), '/ is missing React root')
+  assert(text.includes('manifest.webmanifest'), '/ is missing PWA manifest link')
+
+  const jsAssets = extractAssetPaths(text, 'src').filter((path) => path.endsWith('.js'))
+  const cssAssets = extractAssetPaths(text, 'href').filter((path) => path.endsWith('.css'))
+  assert(jsAssets.length > 0, '/ did not reference a JavaScript bundle')
+  assert(cssAssets.length > 0, '/ did not reference a CSS bundle')
+
+  for (const path of [...jsAssets, ...cssAssets]) {
+    const asset = await fetchText(`${baseUrl}${path}`)
+    assert(asset.response.ok, `${path} returned HTTP ${asset.response.status}`)
+    assert(asset.text.length > 100, `${path} response was unexpectedly small`)
+  }
+
+  const manifest = await fetchJson(`${baseUrl}/manifest.webmanifest`)
+  assert(manifest.response.ok, `/manifest.webmanifest returned HTTP ${manifest.response.status}`)
+  assert(String(manifest.body?.name || '').includes('NoClick AI'), '/manifest.webmanifest is missing app name')
+  assert(manifest.body?.start_url === '/', `/manifest.webmanifest start_url is ${manifest.body?.start_url}`)
+
+  const serviceWorker = await fetchText(`${baseUrl}/service-worker.js`)
+  assert(serviceWorker.response.ok, `/service-worker.js returned HTTP ${serviceWorker.response.status}`)
+  assert(serviceWorker.text.includes('install') && serviceWorker.text.includes('fetch'), '/service-worker.js is missing expected lifecycle handlers')
+
+  resultLine('PASS', '/', `app shell with ${jsAssets.length} JS bundle(s), ${cssAssets.length} CSS bundle(s)`)
 }
 
 async function checkStaticTraversalGuard(baseUrl) {
@@ -620,6 +655,7 @@ async function main() {
     resultLine('PASS', '/health', `model=${health.body.model}, storage=${health.body.storage}`)
     checkDeploymentCommit(health.body, { expectedCommit, strictLaunch })
 
+    await checkAppShell(baseUrl)
     await checkPublicPage(baseUrl, '/privacy', ['Privacy Policy', 'Google User Data', 'Limited Use', '/data-deletion'])
     await checkPublicPage(baseUrl, '/terms', ['Terms of Service', 'High-Risk Actions'])
     await checkPublicPage(baseUrl, '/downloads', ['Downloads', 'Android', 'Windows'])
