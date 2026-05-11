@@ -219,6 +219,12 @@ async function checkReadiness(baseUrl, account) {
     'PRIVACY_POLICY_URL',
     'TERMS_URL',
     'DATA_DELETION_URL',
+    'DOWNLOADS_URL',
+    'GITHUB_RELEASE',
+    'release:android-apk',
+    'release:android-aab',
+    'release:windows-installer',
+    'release:sha256sums',
     'notion:configured',
     'slack:configured',
     'telegram:configured',
@@ -230,7 +236,7 @@ async function checkReadiness(baseUrl, account) {
     assert(item.status === 'ready', `${id} readiness status is ${item.status}`)
   }
 
-  resultLine('PASS', '/v1/readiness', 'public review pages are ready')
+  resultLine('PASS', '/v1/readiness', 'public review pages and release assets are ready')
   summarizeReadiness(body)
 }
 
