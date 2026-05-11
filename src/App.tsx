@@ -100,6 +100,35 @@ type BillingStatus = {
   user: AccountUser
 }
 
+type AuditStep = {
+  stepId: string
+  provider: string
+  action: string
+  title: string
+  risk: Risk
+  status: StepStatus
+  to?: string
+  subject?: string
+}
+
+type AuditLog = {
+  id: string
+  userId: string
+  type: string
+  runId: string
+  createdAt: string
+  step?: AuditStep
+  steps?: AuditStep[]
+  result?: {
+    ok?: boolean
+    code?: string
+    message?: string
+    externalId?: string
+    threadId?: string
+    link?: string
+  }
+}
+
 const STORAGE_KEYS = {
   authSession: 'noclickai.authSession',
   endpoint: 'noclickai.endpoint',
@@ -180,6 +209,25 @@ function statusTone(status: StepStatus) {
   return 'neutral'
 }
 
+function highRiskExecutableSteps(run: AutomationRun | null) {
+  return (
+    run?.steps.filter(
+      (step) =>
+        step.risk === 'high' &&
+        step.status !== 'needs_approval' &&
+        step.status !== 'done' &&
+        step.status !== 'failed' &&
+        step.status !== 'blocked',
+    ) ?? []
+  )
+}
+
+function auditLabel(log: AuditLog) {
+  if (log.type === 'steps_approved') return '승인'
+  if (log.type === 'step_executed') return log.result?.ok ? '실행 완료' : '실행 실패'
+  return log.type
+}
+
 function App() {
   const [endpoint, setEndpoint] = useState(() => window.localStorage.getItem(STORAGE_KEYS.endpoint) || DEFAULT_ENDPOINT)
   const [authSession, setAuthSession] = useState<AuthSession | null>(() =>
@@ -190,6 +238,7 @@ function App() {
   const [accountStatus, setAccountStatus] = useState('로그인 전')
   const [billingStatus, setBillingStatus] = useState<BillingStatus | null>(null)
   const [connectors, setConnectors] = useState<ConnectorStatus[]>([])
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([])
   const [messages, setMessages] = useState<ChatMessage[]>(() =>
     readJsonStorage<ChatMessage[]>(STORAGE_KEYS.chatMessages, [
       newMessage(
@@ -261,6 +310,12 @@ function App() {
     setAuthSession((current) => (current ? { ...current, user: body.user } : current))
   }
 
+  const refreshAuditLogs = async () => {
+    if (!authSession) return
+    const body = await apiFetch('/v1/runs/audit-logs')
+    setAuditLogs(body.auditLogs ?? [])
+  }
+
   useEffect(() => {
     if (!authToken) return
     const baseUrl = normalizeEndpoint(endpoint)
@@ -279,6 +334,14 @@ function App() {
       .then(({ response, body }) => {
         if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`)
         setBillingStatus(body as BillingStatus)
+      })
+      .catch(() => undefined)
+
+    void fetch(`${baseUrl}/v1/runs/audit-logs`, { headers })
+      .then((response) => response.json().then((body) => ({ response, body })))
+      .then(({ response, body }) => {
+        if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`)
+        setAuditLogs(body.auditLogs ?? [])
       })
       .catch(() => undefined)
   }, [authToken, endpoint])
@@ -329,6 +392,7 @@ function App() {
     setAuthSession(null)
     setBillingStatus(null)
     setConnectors([])
+    setAuditLogs([])
     setAccountStatus('로그아웃 완료')
   }
 
@@ -419,6 +483,7 @@ function App() {
     try {
       const body = await apiFetch(`/v1/runs/${activeRun.id}/approve`, { method: 'POST', body: JSON.stringify({}) })
       setActiveRun(body.run)
+      await refreshAuditLogs().catch(() => undefined)
       setMessages((items) => [...items, newMessage('assistant', '승인 가능한 단계를 승인했습니다.')])
     } catch (error) {
       setMessages((items) => [
@@ -432,12 +497,24 @@ function App() {
 
   const executeRun = async () => {
     if (!activeRun) return
+    const highRiskSteps = highRiskExecutableSteps(activeRun)
+    if (highRiskSteps.length) {
+      const summary = highRiskSteps
+        .map((step) => `${step.title} / ${PROVIDER_LABEL[step.provider] || step.provider} / ${step.action}`)
+        .join('\n')
+      const confirmed = window.confirm(`실제 외부 전송 작업입니다.\n\n${summary}\n\n승인된 내용을 지금 실행할까요?`)
+      if (!confirmed) return
+    }
     setIsBusy(true)
     try {
-      const body = await apiFetch(`/v1/runs/${activeRun.id}/execute`, { method: 'POST' })
+      const body = await apiFetch(`/v1/runs/${activeRun.id}/execute`, {
+        method: 'POST',
+        body: JSON.stringify({ confirmHighRisk: highRiskSteps.length > 0 }),
+      })
       setActiveRun(body.run)
       setMessages((items) => [...items, newMessage('assistant', '승인된 단계를 실행했습니다. 결과를 오른쪽에서 확인하세요.')])
       await refreshConnectors().catch(() => undefined)
+      await refreshAuditLogs().catch(() => undefined)
     } catch (error) {
       setMessages((items) => [
         ...items,
@@ -688,6 +765,38 @@ function App() {
               </>
             ) : (
               <p className="fine-print">채팅으로 요청하면 실행 계획이 여기에 표시됩니다.</p>
+            )}
+          </section>
+
+          <section className="panel-card audit-card">
+            <div className="section-title">
+              <ShieldCheck size={18} />
+              <h2>감사 로그</h2>
+              <button type="button" className="mini-button" onClick={() => void refreshAuditLogs()} disabled={!authSession || isBusy}>
+                <RefreshCcw size={14} /> 새로고침
+              </button>
+            </div>
+            {auditLogs.length ? (
+              <div className="audit-list">
+                {auditLogs.slice(0, 8).map((log) => {
+                  const step = log.step || log.steps?.[0]
+                  return (
+                    <article className="audit-item" key={log.id}>
+                      <div className="audit-head">
+                        <strong>{auditLabel(log)}</strong>
+                        <span>{new Date(log.createdAt).toLocaleString('ko-KR')}</span>
+                      </div>
+                      <p>
+                        {step ? `${PROVIDER_LABEL[step.provider] || step.provider} / ${step.action}` : log.runId}
+                        {step?.subject ? ` / ${step.subject}` : ''}
+                      </p>
+                      {log.result?.message && <span className={log.result.ok ? 'audit-ok' : 'audit-bad'}>{log.result.message}</span>}
+                    </article>
+                  )
+                })}
+              </div>
+            ) : (
+              <p className="fine-print">승인 또는 실행 기록이 여기에 표시됩니다.</p>
             )}
           </section>
         </aside>

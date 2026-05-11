@@ -355,6 +355,13 @@ button:disabled {
   flex: 1 1 0;
 }
 
+.mini-button {
+  margin-left: auto;
+  min-height: 30px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
 .step-item {
   display: grid;
   gap: 8px;
@@ -432,6 +439,54 @@ button:disabled {
 
 .result-box {
   border: 1px solid var(--line);
+}
+
+.audit-card .section-title {
+  align-items: center;
+}
+
+.audit-list {
+  display: grid;
+  gap: 8px;
+}
+
+.audit-item {
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.audit-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.audit-head span,
+.audit-item p {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.audit-item p {
+  overflow-wrap: anywhere;
+}
+
+.audit-ok,
+.audit-bad {
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.audit-ok {
+  color: #047857;
+}
+
+.audit-bad {
+  color: #b91c1c;
 }
 
 .spin {

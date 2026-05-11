@@ -183,6 +183,7 @@ function normalizeStore(store = {}) {
     billingEvents: store.billingEvents || {},
     connections: store.connections || {},
     runs: store.runs || {},
+    auditLogs: store.auditLogs || {},
     oauthStates: store.oauthStates || {},
   }
 }
@@ -1913,6 +1914,53 @@ function executionFailure(code, message) {
   return { ok: false, code, message }
 }
 
+function auditStepSnapshot(step) {
+  return {
+    stepId: step.id,
+    provider: step.provider,
+    action: step.action,
+    title: step.title,
+    risk: step.risk,
+    status: step.status,
+    to: step.provider === 'gmail' ? String(step.input?.to || '') : '',
+    subject: step.provider === 'gmail' ? String(step.input?.subject || '') : '',
+  }
+}
+
+function appendAuditLog(store, userId, event) {
+  const id = `audit_${crypto.randomBytes(10).toString('hex')}`
+  const log = {
+    id,
+    userId,
+    createdAt: new Date().toISOString(),
+    ...event,
+  }
+  store.auditLogs[id] = log
+  return log
+}
+
+function userAuditLogs(store, userId) {
+  return Object.values(store.auditLogs || {})
+    .filter((log) => log.userId === userId)
+    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+    .slice(0, 50)
+}
+
+function highRiskExecutableSteps(run) {
+  return run.steps.filter(
+    (step) =>
+      step.risk === 'high' &&
+      step.status !== 'blocked' &&
+      step.status !== 'done' &&
+      step.status !== 'failed' &&
+      step.status !== 'needs_approval',
+  )
+}
+
+function needsHighRiskExecutionConfirmation(run) {
+  return highRiskExecutableSteps(run).length > 0
+}
+
 async function executeStep(store, run, step) {
   if (step.provider === 'google-calendar') return executeGoogleCalendar(store, run, step)
   if (step.provider === 'gmail' && step.action === 'gmail.send_message') return executeGmailSend(store, run, step)
@@ -1938,6 +1986,19 @@ async function executeRun(store, run) {
     }
     step.result = result
     step.status = result.ok ? 'done' : 'failed'
+    appendAuditLog(store, run.userId, {
+      type: 'step_executed',
+      runId: run.id,
+      step: auditStepSnapshot(step),
+      result: {
+        ok: Boolean(result.ok),
+        code: result.code || '',
+        message: result.message || '',
+        externalId: result.externalId || '',
+        threadId: result.threadId || '',
+        link: result.link || '',
+      },
+    })
   }
 
   const pendingApproval = run.steps.some((step) => step.status === 'needs_approval')
@@ -1983,6 +2044,11 @@ async function handleRuns(request, response, url) {
     return
   }
 
+  if (url.pathname === '/v1/runs/audit-logs' && request.method === 'GET') {
+    sendJson(response, 200, { ok: true, auditLogs: userAuditLogs(store, auth.user.id) })
+    return
+  }
+
   if (url.pathname === '/v1/runs' && request.method === 'POST') {
     const body = await readBody(request)
     const prompt = String(body.prompt || '').trim()
@@ -2016,13 +2082,34 @@ async function handleRuns(request, response, url) {
 
   if (runMatch[2] === 'approve' && request.method === 'POST') {
     const body = await readBody(request)
+    const before = run.steps.map((step) => ({ ...step }))
     approveRun(run, body.stepId ? String(body.stepId) : '')
+    const approvedSteps = run.steps.filter(
+      (step) =>
+        step.status === 'approved' &&
+        before.some((previous) => previous.id === step.id && previous.status === 'needs_approval'),
+    )
+    if (approvedSteps.length) {
+      appendAuditLog(store, auth.user.id, {
+        type: 'steps_approved',
+        runId: run.id,
+        steps: approvedSteps.map(auditStepSnapshot),
+      })
+    }
     await writeStore(store)
     sendJson(response, 200, { ok: true, run })
     return
   }
 
   if (runMatch[2] === 'execute' && request.method === 'POST') {
+    const body = await readBody(request)
+    if (needsHighRiskExecutionConfirmation(run) && body.confirmHighRisk !== true) {
+      sendJson(response, 409, {
+        error: 'high_risk_confirmation_required',
+        steps: highRiskExecutableSteps(run).map(auditStepSnapshot),
+      })
+      return
+    }
     await executeRun(store, run)
     await writeStore(store)
     sendJson(response, 200, { ok: true, run })
@@ -2067,14 +2154,30 @@ async function handleChat(request, response) {
 
   if (runId && store.runs[runId]?.userId === auth.user.id && looksLikeApproval(message)) {
     const run = store.runs[runId]
+    const before = run.steps.map((step) => ({ ...step }))
     approveRun(run, '')
-    if (looksLikeExecuteOnly(message) || /실행/.test(message)) await executeRun(store, run)
+    const approvedSteps = run.steps.filter(
+      (step) =>
+        step.status === 'approved' &&
+        before.some((previous) => previous.id === step.id && previous.status === 'needs_approval'),
+    )
+    if (approvedSteps.length) {
+      appendAuditLog(store, auth.user.id, {
+        type: 'steps_approved',
+        runId: run.id,
+        steps: approvedSteps.map(auditStepSnapshot),
+      })
+    }
+    const shouldExecute = looksLikeExecuteOnly(message) || /실행/.test(message)
+    if (shouldExecute && !needsHighRiskExecutionConfirmation(run)) await executeRun(store, run)
     await writeStore(store)
     sendJson(response, 200, {
       ok: true,
       assistantMessage:
         run.status === 'done'
           ? '승인된 작업을 실행했습니다.'
+          : shouldExecute && needsHighRiskExecutionConfirmation(run)
+            ? '위험도가 높은 작업은 실행 버튼에서 추가 확인 후 실행할 수 있습니다.'
           : '승인 가능한 단계를 승인했습니다. 이제 실행할 수 있습니다.',
       run,
       connectors: connectorStatuses(store, auth.user.id),
