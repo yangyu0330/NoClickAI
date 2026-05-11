@@ -83,9 +83,12 @@ The server provides:
 - `POST /v1/auth/register`
 - `POST /v1/auth/login`
 - `POST /v1/auth/logout`
+- `POST /v1/auth/delete-account`
 - `GET /v1/auth/me`
 
 The app stores the session token locally and uses it for sync and AI planning. The old `NOCLICK_SYNC_TOKEN` still works as an admin/dev token.
+
+Account deletion requires the signed-in user to post their own email as `confirmEmail`. It deletes the account record, sessions, provider tokens, runs, audit logs, OAuth state, and workspace state stored by NoClick AI. Public instructions are served at `/data-deletion`.
 
 ## Chat Automation and Connectors
 

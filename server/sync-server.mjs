@@ -543,6 +543,60 @@ function findUserByStripeReference(store, reference) {
   )
 }
 
+function deleteUserData(store, userId) {
+  const deleted = {
+    user: Boolean(store.users[userId]),
+    sessions: 0,
+    connections: store.connections[userId] ? 1 : 0,
+    runs: 0,
+    auditLogs: 0,
+    oauthStates: 0,
+    workspaces: store.workspaces[userId] ? 1 : 0,
+    billingEvents: 0,
+  }
+
+  delete store.users[userId]
+  delete store.connections[userId]
+  delete store.workspaces[userId]
+
+  for (const [sessionHash, session] of Object.entries(store.sessions || {})) {
+    if (session.userId === userId) {
+      delete store.sessions[sessionHash]
+      deleted.sessions += 1
+    }
+  }
+
+  for (const [runId, run] of Object.entries(store.runs || {})) {
+    if (run.userId === userId) {
+      delete store.runs[runId]
+      deleted.runs += 1
+    }
+  }
+
+  for (const [logId, log] of Object.entries(store.auditLogs || {})) {
+    if (log.userId === userId) {
+      delete store.auditLogs[logId]
+      deleted.auditLogs += 1
+    }
+  }
+
+  for (const [stateHash, state] of Object.entries(store.oauthStates || {})) {
+    if (state.userId === userId) {
+      delete store.oauthStates[stateHash]
+      deleted.oauthStates += 1
+    }
+  }
+
+  for (const [eventId, event] of Object.entries(store.billingEvents || {})) {
+    if (event.userId === userId) {
+      delete store.billingEvents[eventId]
+      deleted.billingEvents += 1
+    }
+  }
+
+  return deleted
+}
+
 async function handleAuth(request, response, url) {
   const store = await readStore()
 
@@ -611,6 +665,26 @@ async function handleAuth(request, response, url) {
       await writeStore(store)
     }
     sendJson(response, 200, { ok: true })
+    return
+  }
+
+  if (url.pathname === '/v1/auth/delete-account' && request.method === 'POST') {
+    const auth = getAuthenticatedUser(request, store)
+    if (!auth) {
+      sendJson(response, 401, { error: 'unauthorized' })
+      return
+    }
+
+    const body = await readBody(request)
+    const confirmEmail = normalizeEmail(body.confirmEmail)
+    if (confirmEmail !== auth.user.email) {
+      sendJson(response, 400, { error: 'email_confirmation_required' })
+      return
+    }
+
+    const deleted = deleteUserData(store, auth.user.id)
+    await writeStore(store)
+    sendJson(response, 200, { ok: true, deleted })
     return
   }
 

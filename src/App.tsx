@@ -16,6 +16,7 @@ import {
   Settings,
   ShieldCheck,
   Smartphone,
+  Trash2,
   Unlink,
   UserPlus,
   Zap,
@@ -333,6 +334,9 @@ function LegalPage({ kind }: { kind: 'privacy' | 'terms' }) {
             <p>
               Automation history and audit logs are retained to help users review approvals and external actions. Users can disconnect providers from the app to stop new access. Administrators can delete stored account data, OAuth tokens, run history, and audit logs on request.
             </p>
+            <p>
+              Users can also delete their own NoClick AI account and stored data from the app. Public deletion instructions are available at <a href="/data-deletion">/data-deletion</a>.
+            </p>
             <h2>Contact</h2>
             <p>For privacy requests, contact the NoClick AI operator at the support address listed in the Google OAuth consent screen.</p>
           </>
@@ -549,6 +553,38 @@ function AppShell() {
     setAuditLogs([])
     setReadiness(null)
     setAccountStatus('로그아웃 완료')
+  }
+
+  const deleteAccount = async () => {
+    if (!authSession) return
+    const confirmEmail = window.prompt(`계정과 저장 데이터를 삭제하려면 이메일을 입력하세요: ${authSession.user.email}`)
+    if (confirmEmail !== authSession.user.email) {
+      setAccountStatus('계정 삭제 취소됨')
+      return
+    }
+
+    setIsBusy(true)
+    try {
+      await apiFetch('/v1/auth/delete-account', {
+        method: 'POST',
+        body: JSON.stringify({ confirmEmail }),
+      })
+      window.localStorage.removeItem(STORAGE_KEYS.authSession)
+      window.localStorage.removeItem(STORAGE_KEYS.activeRun)
+      window.localStorage.removeItem(STORAGE_KEYS.chatMessages)
+      setAuthSession(null)
+      setBillingStatus(null)
+      setConnectors([])
+      setAuditLogs([])
+      setReadiness(null)
+      setActiveRun(null)
+      setMessages([newMessage('system', '계정과 저장 데이터가 삭제되었습니다.')])
+      setAccountStatus('계정 삭제 완료')
+    } catch (error) {
+      setAccountStatus(error instanceof Error ? `계정 삭제 실패: ${error.message}` : '계정 삭제 실패')
+    } finally {
+      setIsBusy(false)
+    }
   }
 
   const startCheckout = async () => {
@@ -796,6 +832,9 @@ function AppShell() {
                   <button type="button" onClick={() => void logout()} disabled={isBusy}>
                     <LogOut size={16} /> 로그아웃
                   </button>
+                  <button type="button" className="danger-button" onClick={() => void deleteAccount()} disabled={isBusy}>
+                    <Trash2 size={16} /> 계정 삭제
+                  </button>
                 </div>
               </>
             ) : (
@@ -1006,6 +1045,7 @@ function AppShell() {
         <a href="/downloads">Downloads</a>
         <a href="/privacy">Privacy Policy</a>
         <a href="/terms">Terms of Service</a>
+        <a href="/data-deletion">Data Deletion</a>
       </footer>
     </main>
   )

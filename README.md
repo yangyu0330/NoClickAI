@@ -75,6 +75,7 @@ API:
 - `GET /health`
 - `POST /v1/auth/register`
 - `POST /v1/auth/login`
+- `POST /v1/auth/delete-account`
 - `GET /v1/auth/me`
 - `POST /v1/chat`
 - `GET /v1/runs`
@@ -99,6 +100,7 @@ Public review pages:
 - Privacy Policy: `/privacy`
 - Terms of Service: `/terms`
 - Downloads: `/downloads`
+- Data Deletion: `/data-deletion`
 
 Current internal release:
 

@@ -315,6 +315,17 @@ button:disabled {
   color: #ffffff;
 }
 
+.danger-button {
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+
+.danger-button:hover:not(:disabled) {
+  border-color: #b91c1c;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
 .icon-button {
   width: 40px;
   padding: 0;
