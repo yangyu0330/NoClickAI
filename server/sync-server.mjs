@@ -1485,10 +1485,126 @@ async function fetchJson(url, options) {
   return body
 }
 
-function parseCalendarStart(value) {
-  if (!value) return new Date(Date.now() + 60 * 60 * 1000)
-  const start = new Date(value)
-  return Number.isFinite(start.getTime()) ? start : null
+function getSeoulDateParts(date = new Date()) {
+  const values = {}
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+  }).formatToParts(date)
+
+  for (const part of parts) {
+    if (part.type === 'year' || part.type === 'month' || part.type === 'day') {
+      values[part.type] = Number(part.value)
+    }
+  }
+
+  return values
+}
+
+function createSeoulDate(year, month, day, hour, minute) {
+  return new Date(Date.UTC(year, month - 1, day, hour - 9, minute, 0, 0))
+}
+
+function validClockTime(hour, minute) {
+  if (!Number.isInteger(hour) || !Number.isInteger(minute)) return null
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null
+  return { hour, minute }
+}
+
+function parseCalendarClock(text) {
+  const source = String(text || '')
+  const lower = source.toLowerCase()
+
+  let match = lower.match(/\b(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)\b/)
+  if (match) {
+    let hour = Number(match[1])
+    const minute = Number(match[2] || 0)
+    const meridiem = match[3][0]
+    if (meridiem === 'p' && hour < 12) hour += 12
+    if (meridiem === 'a' && hour === 12) hour = 0
+    return validClockTime(hour, minute)
+  }
+
+  match = source.match(/\uC624\uC804\s*(\d{1,2})(?:\s*\uC2DC)?(?:\s*(\d{1,2})\s*\uBD84?)?/)
+  if (match) {
+    let hour = Number(match[1])
+    const minute = Number(match[2] || 0)
+    if (hour === 12) hour = 0
+    return validClockTime(hour, minute)
+  }
+
+  match = source.match(/\uC624\uD6C4\s*(\d{1,2})(?:\s*\uC2DC)?(?:\s*(\d{1,2})\s*\uBD84?)?/)
+  if (match) {
+    let hour = Number(match[1])
+    const minute = Number(match[2] || 0)
+    if (hour < 12) hour += 12
+    return validClockTime(hour, minute)
+  }
+
+  match = lower.match(/\bat\s+(\d{1,2})(?::(\d{2}))?\b/)
+  if (match) return validClockTime(Number(match[1]), Number(match[2] || 0))
+
+  match = source.match(/(\d{1,2})\s*\uC2DC(?:\s*(\d{1,2})\s*\uBD84?)?/)
+  if (match) return validClockTime(Number(match[1]), Number(match[2] || 0))
+
+  match = lower.match(/\b(\d{1,2}):(\d{2})\b/)
+  if (match) return validClockTime(Number(match[1]), Number(match[2]))
+
+  return null
+}
+
+function parseCalendarDayOffset(text) {
+  const source = String(text || '')
+  const lower = source.toLowerCase()
+
+  if (/\uBAA8\uB808/.test(source) || /\bday after tomorrow\b/.test(lower)) return 2
+  if (/\uB0B4\uC77C/.test(source) || /\btomorrow\b/.test(lower)) return 1
+  if (/\uC624\uB298/.test(source) || /\btoday\b/.test(lower)) return 0
+  if (/\uB2E4\uC74C\s*\uC8FC/.test(source) || /\bnext week\b/.test(lower)) return 7
+
+  const inDays = lower.match(/\bin\s+(\d{1,2})\s+days?\b/)
+  if (inDays) return Number(inDays[1])
+
+  return null
+}
+
+function parseCalendarDateLiteral(text) {
+  const source = String(text || '')
+  let match = source.match(/\b(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})\b/)
+  if (match) {
+    return { year: Number(match[1]), month: Number(match[2]), day: Number(match[3]) }
+  }
+
+  match = source.match(/(\d{1,2})\s*\uC6D4\s*(\d{1,2})\s*\uC77C/)
+  if (match) {
+    return { ...getSeoulDateParts(), month: Number(match[1]), day: Number(match[2]) }
+  }
+
+  return null
+}
+
+function parseCalendarStart(value, prompt = '') {
+  const raw = String(value || '').trim()
+  if (raw) {
+    const start = new Date(raw)
+    if (Number.isFinite(start.getTime())) return start
+  }
+
+  const text = [raw, prompt].filter(Boolean).join(' ')
+  const clock = parseCalendarClock(text) || { hour: 9, minute: 0 }
+  const dateLiteral = parseCalendarDateLiteral(text)
+  if (dateLiteral) return createSeoulDate(dateLiteral.year, dateLiteral.month, dateLiteral.day, clock.hour, clock.minute)
+
+  const dayOffset = parseCalendarDayOffset(text)
+  if (dayOffset !== null) {
+    const today = getSeoulDateParts()
+    return createSeoulDate(today.year, today.month, today.day + dayOffset, clock.hour, clock.minute)
+  }
+
+  if (!raw) return new Date(Date.now() + 60 * 60 * 1000)
+  return null
 }
 
 function isSelfAddressed(prompt) {
@@ -1506,7 +1622,7 @@ async function executeGoogleCalendar(store, run, step) {
   const connection = await refreshGoogleTokenIfNeeded(store, run.userId)
   if (!connection?.accessToken) return executionFailure('connection_required', 'Google 연결이 필요합니다.')
 
-  const start = parseCalendarStart(step.input.when)
+  const start = parseCalendarStart(step.input.when, run.prompt)
   if (!start) return executionFailure('invalid_event_time', 'Calendar 일정 시간이 ISO 8601 형식이 아니어서 실행할 수 없습니다.')
   const end = new Date(start.getTime() + 60 * 60 * 1000)
   const event = await fetchJson('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
