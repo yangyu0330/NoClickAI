@@ -110,6 +110,8 @@ Set `NOCLICK_AUDIT_REQUIRE_ADMIN=true` or the workflow input `require_admin_audi
 
 The workflow writes the GitHub Actions commit SHA into `server/build-meta.generated.mjs` before building. `/health` returns that value as `commitSha`, and the production audit receives `NOCLICK_AUDIT_EXPECTED_COMMIT=${{ github.sha }}` so the deployed server must report the expected commit. Local `npm run audit:production` also warns when `/health.commitSha` does not match the current git `HEAD`; treat that warning as a stale production deployment until a new Vercel deploy succeeds.
 
+The workflow can also run concurrent production audits through `parallel_audit_runs`. Keep this above `1` for normal deployment verification so overlapping account/session writes are tested against the deployed Postgres store. Parallel audit is skipped when `strict_launch=true`, because strict mode intentionally fails until all external launch gates are clear.
+
 For the final public-launch gate, run the same audit in strict mode:
 
 ```bash
@@ -120,6 +122,7 @@ Or set this in GitHub Actions when running `CI` or `Deploy Production` manually:
 
 - `strict_launch=true`
 - `require_admin_audit=true`
+- `parallel_audit_runs=2`
 
 Strict mode exits with a failure if `/v1/readiness` still reports any launch-blocking item. User-specific connector warnings and optional direct-delivery credentials do not block launch when a prepared/share fallback is available. Keep strict mode disabled for ordinary internal deployment checks while Stripe, OAuth verification, and app-signing gates are intentionally incomplete.
 

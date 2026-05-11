@@ -15,6 +15,11 @@ on:
         required: false
         type: boolean
         default: false
+      parallel_audit_runs:
+        description: Number of production audits to run in parallel after the main audit
+        required: false
+        type: number
+        default: 1
       audit_base_url:
         description: Production audit base URL
         required: false
@@ -92,3 +97,13 @@ jobs:
           NOCLICK_AUDIT_TOKEN: ${{ secrets.NOCLICK_AUDIT_TOKEN }}
           NOCLICK_AUDIT_REQUIRE_ADMIN: ${{ inputs.require_admin_audit }}
           NOCLICK_AUDIT_STRICT_LAUNCH: ${{ inputs.strict_launch }}
+
+      - name: Run parallel production audit
+        if: ${{ inputs.parallel_audit_runs > 1 && !inputs.strict_launch }}
+        run: npm run audit:production:parallel -- --runs "${{ inputs.parallel_audit_runs }}"
+        env:
+          NOCLICK_AUDIT_BASE_URL: ${{ inputs.audit_base_url }}
+          NOCLICK_AUDIT_EMAIL: ${{ secrets.NOCLICK_AUDIT_EMAIL }}
+          NOCLICK_AUDIT_PASSWORD: ${{ secrets.NOCLICK_AUDIT_PASSWORD }}
+          NOCLICK_AUDIT_TOKEN: ${{ secrets.NOCLICK_AUDIT_TOKEN }}
+          NOCLICK_AUDIT_REQUIRE_ADMIN: ${{ inputs.require_admin_audit }}

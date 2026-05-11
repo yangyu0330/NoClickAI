@@ -82,6 +82,7 @@ git diff --check
 
 ```bash
 npm run audit:production
+npm run audit:production:parallel -- --runs 2
 npm run audit:production -- --strict-launch
 npm run audit:production -- --require-admin
 npx vercel@latest inspect https://noclickai-zeta.vercel.app
@@ -112,6 +113,7 @@ gh secret set VERCEL_TOKEN --repo yangyu0330/NoClickAI --body $env:VERCEL_TOKEN
 - `--require-admin` 또는 `NOCLICK_AUDIT_REQUIRE_ADMIN=true`일 때 어드민 결제 우회 계정 여부
 - Stripe webhook의 서명 없는 요청 거부
 - `NOCLICK_REQUIRE_SUBSCRIPTION=true`일 때 무료 계정의 paid automation API 접근 차단
+- 병렬 감사에서 계정/세션/실행 기록 동시 저장 안정성
 - Notion prepared-page 자동화
 - Slack prepared-message 자동화
 - Telegram prepared-message 자동화

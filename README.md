@@ -91,6 +91,12 @@ npm run audit:production
 
 The audit checks `/health`, the deployed commit reported by `/health`, the public review pages, the downloads page, static traversal guarding, GitHub release assets, authenticated readiness, billing API behavior, Stripe webhook signature guarding, subscription access gating when enabled, safe chat-to-Notion, chat-to-Slack, chat-to-Telegram, and chat-to-KakaoTalk prepared-content automation runs, high-risk Gmail approval gating without sending email, and account deletion cleanup using a temporary account.
 
+Run the same audit concurrently to catch account/session persistence regressions under overlapping production requests:
+
+```bash
+npm run audit:production:parallel -- --runs 2
+```
+
 When run from a git checkout, the audit warns if the deployed `commitSha` does not match the local `HEAD`. In CI, pass the exact commit to make deployment drift fail the audit:
 
 ```bash
@@ -305,8 +311,9 @@ Optional audit environment variables:
 - `NOCLICK_AUDIT_EMAIL` and `NOCLICK_AUDIT_PASSWORD`: existing admin/pro account for paid-launch audits
 - `NOCLICK_AUDIT_TOKEN`: existing session token when password login should not be used
 - `NOCLICK_AUDIT_REQUIRE_ADMIN`: set to `true` to fail unless the audit account has admin billing bypass
+- `NOCLICK_PARALLEL_AUDIT_RUNS`: worker count for `npm run audit:production:parallel`
 
-The same audit can be run from GitHub Actions through the manual `CI` workflow by enabling `run_production_audit`. Store audit credentials as repository secrets named `NOCLICK_AUDIT_EMAIL`, `NOCLICK_AUDIT_PASSWORD`, or `NOCLICK_AUDIT_TOKEN`.
+The same audit can be run from GitHub Actions through the manual `CI` workflow by enabling `run_production_audit`. Store audit credentials as repository secrets named `NOCLICK_AUDIT_EMAIL`, `NOCLICK_AUDIT_PASSWORD`, or `NOCLICK_AUDIT_TOKEN`. Use `parallel_audit_runs` to run overlapping production audits after the main audit.
 
 ## Documentation
 
