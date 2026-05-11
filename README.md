@@ -85,6 +85,7 @@ API:
 - `POST /v1/billing/checkout`
 - `POST /v1/billing/portal`
 - `POST /v1/billing/webhook`
+- `GET /v1/readiness`
 - `GET /v1/state?workspaceId=...`
 - `PUT /v1/state`
 - `POST /v1/plan`

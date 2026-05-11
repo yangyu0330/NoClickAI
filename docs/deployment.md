@@ -60,6 +60,8 @@ npm run sync:server
 
 `GET /health` returns the active protocol, AI model, account support, billing support, and whether Stripe is configured.
 
+After signing in, `GET /v1/readiness` returns a production readiness checklist without exposing secret values. The web app shows the same checklist in the deployment readiness panel so missing provider credentials, billing settings, public OAuth verification, and app-signing manual gates are visible before launch.
+
 ## Accounts
 
 The server provides:

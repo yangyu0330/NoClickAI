@@ -129,6 +129,33 @@ type AuditLog = {
   }
 }
 
+type ReadinessStatus = 'ready' | 'missing' | 'warning' | 'manual'
+
+type ReadinessItem = {
+  id: string
+  category: string
+  label: string
+  status: ReadinessStatus
+  detail: string
+  action: string
+}
+
+type ReadinessReport = {
+  ok: boolean
+  productionReady: boolean
+  generatedAt: string
+  publicAppUrl: string
+  serverBaseUrl: string
+  summary: {
+    ready: number
+    missing: number
+    warning: number
+    manual: number
+    total: number
+  }
+  items: ReadinessItem[]
+}
+
 const STORAGE_KEYS = {
   authSession: 'noclickai.authSession',
   endpoint: 'noclickai.endpoint',
@@ -228,6 +255,20 @@ function auditLabel(log: AuditLog) {
   return log.type
 }
 
+function readinessTone(status: ReadinessStatus) {
+  if (status === 'ready') return 'good'
+  if (status === 'missing') return 'bad'
+  if (status === 'warning') return 'warn'
+  return 'neutral'
+}
+
+function readinessLabel(status: ReadinessStatus) {
+  if (status === 'ready') return '준비'
+  if (status === 'missing') return '누락'
+  if (status === 'warning') return '주의'
+  return '수동'
+}
+
 function App() {
   const [endpoint, setEndpoint] = useState(() => window.localStorage.getItem(STORAGE_KEYS.endpoint) || DEFAULT_ENDPOINT)
   const [authSession, setAuthSession] = useState<AuthSession | null>(() =>
@@ -239,6 +280,7 @@ function App() {
   const [billingStatus, setBillingStatus] = useState<BillingStatus | null>(null)
   const [connectors, setConnectors] = useState<ConnectorStatus[]>([])
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([])
+  const [readiness, setReadiness] = useState<ReadinessReport | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>(() =>
     readJsonStorage<ChatMessage[]>(STORAGE_KEYS.chatMessages, [
       newMessage(
@@ -316,6 +358,12 @@ function App() {
     setAuditLogs(body.auditLogs ?? [])
   }
 
+  const refreshReadiness = async () => {
+    if (!authSession) return
+    const body = (await apiFetch('/v1/readiness')) as ReadinessReport
+    setReadiness(body)
+  }
+
   useEffect(() => {
     if (!authToken) return
     const baseUrl = normalizeEndpoint(endpoint)
@@ -342,6 +390,14 @@ function App() {
       .then(({ response, body }) => {
         if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`)
         setAuditLogs(body.auditLogs ?? [])
+      })
+      .catch(() => undefined)
+
+    void fetch(`${baseUrl}/v1/readiness`, { headers })
+      .then((response) => response.json().then((body) => ({ response, body })))
+      .then(({ response, body }) => {
+        if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`)
+        setReadiness(body as ReadinessReport)
       })
       .catch(() => undefined)
   }, [authToken, endpoint])
@@ -393,6 +449,7 @@ function App() {
     setBillingStatus(null)
     setConnectors([])
     setAuditLogs([])
+    setReadiness(null)
     setAccountStatus('로그아웃 완료')
   }
 
@@ -686,6 +743,47 @@ function App() {
               />
             </section>
           )}
+
+          <section className="panel-card readiness-card">
+            <div className="section-title">
+              <ShieldCheck size={18} />
+              <h2>배포 준비</h2>
+              <button type="button" className="mini-button" onClick={() => void refreshReadiness()} disabled={!authSession || isBusy}>
+                <RefreshCcw size={14} /> 점검
+              </button>
+            </div>
+            {readiness ? (
+              <>
+                <div className="readiness-summary">
+                  <span className={`status-pill ${readiness.productionReady ? 'good' : 'warn'}`}>
+                    {readiness.productionReady ? '공개 준비' : '설정 필요'}
+                  </span>
+                  <span>준비 {readiness.summary.ready}</span>
+                  <span>누락 {readiness.summary.missing}</span>
+                  <span>주의 {readiness.summary.warning}</span>
+                  <span>수동 {readiness.summary.manual}</span>
+                </div>
+                <div className="readiness-list">
+                  {readiness.items
+                    .filter((item) => item.status !== 'ready')
+                    .slice(0, 8)
+                    .map((item) => (
+                      <article className="readiness-item" key={item.id}>
+                        <div>
+                          <strong>{item.label}</strong>
+                          <span>{item.category}</span>
+                        </div>
+                        <span className={`status-pill ${readinessTone(item.status)}`}>{readinessLabel(item.status)}</span>
+                        <p>{item.detail}</p>
+                        {item.action && <p className="fine-print">{item.action}</p>}
+                      </article>
+                    ))}
+                </div>
+              </>
+            ) : (
+              <p className="fine-print">로그인하면 운영 배포에 필요한 설정을 점검합니다.</p>
+            )}
+          </section>
 
           <section className="panel-card">
             <div className="section-title">

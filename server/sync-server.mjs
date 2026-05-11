@@ -842,6 +842,150 @@ function connectorStatuses(store, userId) {
   })
 }
 
+function readinessItem(id, category, label, status, detail = '', action = '') {
+  return { id, category, label, status, detail, action }
+}
+
+function envPresent(name) {
+  return Boolean(String(process.env[name] || '').trim())
+}
+
+function envConfiguredItem(name, category, label, detail = '') {
+  return readinessItem(
+    name,
+    category,
+    label,
+    envPresent(name) ? 'ready' : 'missing',
+    envPresent(name) ? detail || 'Configured.' : `${name} is missing.`,
+    envPresent(name) ? '' : `Set ${name} in Vercel Production environment variables and redeploy.`,
+  )
+}
+
+function connectorReadinessItems(store, userId) {
+  return connectorStatuses(store, userId).flatMap((connector) => {
+    const items = [
+      readinessItem(
+        `${connector.id}:configured`,
+        'connectors',
+        `${connector.name} configuration`,
+        connector.configured ? 'ready' : 'missing',
+        connector.configured
+          ? `${connector.name} server configuration is present.`
+          : connector.missingConfig?.length
+            ? `Missing ${connector.missingConfig.join(', ')}.`
+            : `${connector.name} server configuration is missing.`,
+        connector.configured ? '' : 'Add the missing provider credentials and redeploy.',
+      ),
+    ]
+
+    if (connector.needsOAuth && connector.configured) {
+      items.push(
+        readinessItem(
+          `${connector.id}:connected`,
+          'connectors',
+          `${connector.name} user connection`,
+          connector.connected ? 'ready' : 'warning',
+          connector.connected ? `${connector.name} is connected for this user.` : `${connector.name} OAuth is not connected for this user.`,
+          connector.connected ? '' : `Open the app and connect ${connector.name}.`,
+        ),
+      )
+    }
+
+    if (connector.id === 'telegram') {
+      items.push(
+        readinessItem(
+          'telegram:chat',
+          'connectors',
+          'Telegram default chat',
+          envPresent('TELEGRAM_DEFAULT_CHAT_ID') ? 'ready' : 'missing',
+          envPresent('TELEGRAM_DEFAULT_CHAT_ID') ? 'Default chat ID is configured.' : 'TELEGRAM_DEFAULT_CHAT_ID is missing.',
+          envPresent('TELEGRAM_DEFAULT_CHAT_ID') ? '' : 'Set TELEGRAM_DEFAULT_CHAT_ID after adding the bot to the target chat.',
+        ),
+      )
+    }
+
+    return items
+  })
+}
+
+function productionReadinessReport(store, userId) {
+  const items = [
+    envConfiguredItem('OPENAI_API_KEY', 'core', 'OpenAI API key'),
+    envConfiguredItem('DATABASE_URL', 'core', 'Postgres database'),
+    envConfiguredItem('NOCLICK_ADMIN_EMAILS', 'core', 'Admin email allowlist'),
+    readinessItem(
+      'NOCLICK_SYNC_TOKEN',
+      'core',
+      'Server sync token',
+      SYNC_TOKEN && SYNC_TOKEN !== 'dev-sync-token' ? 'ready' : 'missing',
+      SYNC_TOKEN && SYNC_TOKEN !== 'dev-sync-token' ? 'Production sync token is configured.' : 'NOCLICK_SYNC_TOKEN is missing or still using dev-sync-token.',
+      SYNC_TOKEN && SYNC_TOKEN !== 'dev-sync-token' ? '' : 'Set NOCLICK_SYNC_TOKEN to a long random value.',
+    ),
+    readinessItem(
+      'NOCLICK_ALLOWED_ORIGIN',
+      'core',
+      'CORS allowed origin',
+      ALLOWED_ORIGIN && ALLOWED_ORIGIN !== '*' ? 'ready' : 'warning',
+      ALLOWED_ORIGIN && ALLOWED_ORIGIN !== '*' ? `Allowed origin is ${ALLOWED_ORIGIN}.` : 'CORS allows every origin.',
+      ALLOWED_ORIGIN && ALLOWED_ORIGIN !== '*' ? '' : 'Set NOCLICK_ALLOWED_ORIGIN to the production app URL before public launch.',
+    ),
+    readinessItem(
+      'GOOGLE_OAUTH_VERIFICATION',
+      'google',
+      'Google OAuth public verification',
+      'manual',
+      'Google Console verification status cannot be checked from this server.',
+      'Before public launch, complete Google OAuth app verification or keep the app in Testing with explicit test users.',
+    ),
+    ...connectorReadinessItems(store, userId),
+    envConfiguredItem('STRIPE_SECRET_KEY', 'billing', 'Stripe secret key'),
+    envConfiguredItem('STRIPE_PRICE_ID', 'billing', 'Stripe recurring price'),
+    envConfiguredItem('STRIPE_WEBHOOK_SECRET', 'billing', 'Stripe webhook secret'),
+    readinessItem(
+      'NOCLICK_REQUIRE_SUBSCRIPTION',
+      'billing',
+      'Subscription enforcement',
+      REQUIRE_SUBSCRIPTION ? 'ready' : 'warning',
+      REQUIRE_SUBSCRIPTION ? 'Subscription enforcement is enabled.' : 'Subscription enforcement is disabled.',
+      REQUIRE_SUBSCRIPTION ? '' : 'Set NOCLICK_REQUIRE_SUBSCRIPTION=true when paid access should be required.',
+    ),
+    readinessItem(
+      'ANDROID_RELEASE_SIGNING',
+      'apps',
+      'Android release signing',
+      'manual',
+      'Android Play signing cannot be verified from the web server.',
+      'Build a signed AAB in Android Studio and upload it to Play Console.',
+    ),
+    readinessItem(
+      'WINDOWS_CODE_SIGNING',
+      'apps',
+      'Windows installer code signing',
+      'manual',
+      'Windows code-signing certificate cannot be verified from the web server.',
+      'Configure electron-builder signing credentials before public Windows distribution.',
+    ),
+  ]
+
+  const summary = {
+    ready: items.filter((item) => item.status === 'ready').length,
+    missing: items.filter((item) => item.status === 'missing').length,
+    warning: items.filter((item) => item.status === 'warning').length,
+    manual: items.filter((item) => item.status === 'manual').length,
+    total: items.length,
+  }
+
+  return {
+    ok: true,
+    productionReady: summary.missing === 0 && summary.warning === 0,
+    generatedAt: new Date().toISOString(),
+    publicAppUrl: PUBLIC_APP_URL,
+    serverBaseUrl: SERVER_BASE_URL,
+    summary,
+    items,
+  }
+}
+
 function oauthProviderFromConnector(providerId) {
   return PROVIDER_ALIASES[providerId] || providerId
 }
@@ -2246,6 +2390,21 @@ export async function handleRequest(request, response) {
 
     if (url.pathname.startsWith('/v1/billing/')) {
       await handleBilling(request, response, url)
+      return
+    }
+
+    if (url.pathname === '/v1/readiness') {
+      const store = await readStore()
+      const auth = requireUserAccess(request, store)
+      if (!auth) {
+        sendJson(response, 401, { error: 'unauthorized' })
+        return
+      }
+      if (auth.paymentRequired) {
+        sendJson(response, 402, { error: 'subscription_required' })
+        return
+      }
+      sendJson(response, 200, productionReadinessReport(store, auth.user.id))
       return
     }
 
