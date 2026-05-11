@@ -64,6 +64,9 @@ jobs:
       - name: Check launch env script syntax
         run: node --check scripts/apply-launch-env.mjs
 
+      - name: Check launch env smoke syntax
+        run: node --check scripts/launch-env-smoke.mjs
+
       - name: Check production E2E script syntax
         run: node --check scripts/production-e2e.mjs
 
@@ -81,6 +84,9 @@ jobs:
 
       - name: Billing webhook smoke
         run: npm run test:billing
+
+      - name: Launch env smoke
+        run: npm run test:launch-env
 
       - name: Readiness smoke
         run: npm run test:readiness

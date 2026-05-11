@@ -161,6 +161,12 @@ The helper does not print secret values. It requires live-mode Stripe prefixes a
 npm run launch:env -- --file .env.launch.local --apply --deploy --verify --strict
 ```
 
+The launch-env smoke test runs locally and in CI. It verifies that placeholder/test launch values fail and valid-looking values remain a dry-run unless `--apply` is explicitly present:
+
+```bash
+npm run test:launch-env
+```
+
 Or set this in GitHub Actions when running `CI` or `Deploy Production` manually:
 
 - `strict_launch=true`
