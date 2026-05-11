@@ -1,0 +1,117 @@
+name: Public Launch Gate
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag used for signed app artifacts
+        required: true
+        type: string
+        default: v0.1.0
+      audit_base_url:
+        description: Production URL to verify
+        required: false
+        type: string
+        default: https://noclickai-zeta.vercel.app
+      create_github_release:
+        description: Attach signed artifacts to the GitHub release when package signing passes
+        required: false
+        type: boolean
+        default: false
+      run_signed_packages:
+        description: Build and verify signed Android and Windows packages
+        required: false
+        type: boolean
+        default: true
+
+concurrency:
+  group: public-launch-gate
+  cancel-in-progress: false
+
+jobs:
+  production:
+    name: Production strict gate
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check server syntax
+        run: node --check server/sync-server.mjs
+
+      - name: Check audit script syntax
+        run: node --check scripts/production-audit.mjs
+
+      - name: Check launch status script syntax
+        run: node --check scripts/launch-status.mjs
+
+      - name: Check production E2E script syntax
+        run: node --check scripts/production-e2e.mjs
+
+      - name: Dependency audit
+        run: npm audit --audit-level=high
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Launch status checklist
+        continue-on-error: true
+        run: npm run launch:status
+        env:
+          NOCLICK_AUDIT_BASE_URL: ${{ inputs.audit_base_url }}
+          NOCLICK_AUDIT_EMAIL: ${{ secrets.NOCLICK_AUDIT_EMAIL }}
+          NOCLICK_AUDIT_PASSWORD: ${{ secrets.NOCLICK_AUDIT_PASSWORD }}
+          NOCLICK_AUDIT_TOKEN: ${{ secrets.NOCLICK_AUDIT_TOKEN }}
+          NOCLICK_AUDIT_EXPECTED_COMMIT: ${{ github.sha }}
+
+      - name: Strict production audit
+        run: npm run audit:production
+        env:
+          NOCLICK_AUDIT_BASE_URL: ${{ inputs.audit_base_url }}
+          NOCLICK_AUDIT_EMAIL: ${{ secrets.NOCLICK_AUDIT_EMAIL }}
+          NOCLICK_AUDIT_PASSWORD: ${{ secrets.NOCLICK_AUDIT_PASSWORD }}
+          NOCLICK_AUDIT_TOKEN: ${{ secrets.NOCLICK_AUDIT_TOKEN }}
+          NOCLICK_AUDIT_EXPECTED_COMMIT: ${{ github.sha }}
+          NOCLICK_AUDIT_REQUIRE_ADMIN: true
+          NOCLICK_AUDIT_STRICT_LAUNCH: true
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Production E2E smoke
+        run: npm run test:e2e:production
+        env:
+          NOCLICK_E2E_BASE_URL: ${{ inputs.audit_base_url }}
+          NOCLICK_E2E_EMAIL: ${{ secrets.NOCLICK_AUDIT_EMAIL }}
+          NOCLICK_E2E_PASSWORD: ${{ secrets.NOCLICK_AUDIT_PASSWORD }}
+
+  signed-app-packages:
+    name: Signed app packages
+    if: inputs.run_signed_packages
+    uses: ./.github/workflows/release-apps.yml
+    permissions:
+      contents: write
+    with:
+      release_tag: ${{ inputs.release_tag }}
+      require_signing: true
+      create_github_release: ${{ inputs.create_github_release }}
+    secrets: inherit

@@ -121,6 +121,8 @@ For the final public-launch gate, run the same audit in strict mode:
 npm run audit:production -- --strict-launch
 ```
 
+GitHub Actions also provides a `Public Launch Gate` workflow. Run it after Google verification, Stripe live billing, subscription enforcement, Android Play Console upload, and Windows code signing are complete. It combines strict production readiness, production browser smoke, and signed app package verification.
+
 Run a browser-level production smoke test after the API audit:
 
 ```bash

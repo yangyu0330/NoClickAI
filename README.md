@@ -90,6 +90,8 @@ Run the same browser smoke against the deployed app:
 npm run test:e2e:production
 ```
 
+For the final public launch check, use the GitHub Actions `Public Launch Gate` workflow. It runs the strict production readiness gate, production browser smoke, and signed Android/Windows package workflow in one release-oriented pass.
+
 Audit the production deployment:
 
 ```bash
