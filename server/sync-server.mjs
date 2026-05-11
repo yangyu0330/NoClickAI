@@ -31,6 +31,12 @@ const STRIPE_CANCEL_URL = process.env.STRIPE_CANCEL_URL || `${PUBLIC_APP_URL}?bi
 const STRIPE_PORTAL_RETURN_URL = process.env.STRIPE_PORTAL_RETURN_URL || PUBLIC_APP_URL
 const REQUIRE_SUBSCRIPTION = process.env.NOCLICK_REQUIRE_SUBSCRIPTION === 'true'
 const TOKEN_ENCRYPTION_KEY = process.env.NOCLICK_TOKEN_ENCRYPTION_KEY || SYNC_TOKEN
+const ADMIN_EMAILS = new Set(
+  String(process.env.NOCLICK_ADMIN_EMAILS || '')
+    .split(',')
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean),
+)
 const MAX_BODY_BYTES = 1_000_000
 const RATE_LIMIT_WINDOW_MS = 60_000
 const RATE_LIMIT_MAX = 90
@@ -335,13 +341,35 @@ function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase()
 }
 
+function isAdminEmail(email) {
+  return ADMIN_EMAILS.has(normalizeEmail(email))
+}
+
+function isAdminUser(user) {
+  return Boolean(user && (user.admin === true || user.role === 'admin' || isAdminEmail(user.email)))
+}
+
+function applyAdminEntitlements(user) {
+  if (!isAdminUser(user)) return user
+
+  user.admin = true
+  user.role = 'admin'
+  user.subscriptionStatus = 'active'
+  user.billingPlan = 'admin'
+  user.adminGrantedAt ||= new Date().toISOString()
+  return user
+}
+
 function publicUser(user) {
+  const isAdmin = isAdminUser(user)
   return {
     id: user.id,
     email: user.email,
     name: user.name,
-    subscriptionStatus: user.subscriptionStatus || 'free',
-    billingPlan: user.billingPlan || 'free',
+    role: isAdmin ? 'admin' : user.role || 'user',
+    isAdmin,
+    subscriptionStatus: isAdmin ? 'active' : user.subscriptionStatus || 'free',
+    billingPlan: isAdmin ? 'admin' : user.billingPlan || 'free',
     createdAt: user.createdAt,
   }
 }
@@ -378,6 +406,7 @@ function getAuthenticatedUser(request, store) {
 
   const user = store.users[session.userId]
   if (!user) return null
+  applyAdminEntitlements(user)
 
   return { user, tokenHash }
 }
@@ -397,7 +426,7 @@ function requireUserAccess(request, store) {
 }
 
 function hasPaidAccess(user) {
-  return ['active', 'trialing'].includes(user?.subscriptionStatus)
+  return isAdminUser(user) || ['active', 'trialing'].includes(user?.subscriptionStatus)
 }
 
 async function readRawBody(request) {
@@ -491,6 +520,7 @@ async function handleAuth(request, response, url) {
       billingPlan: 'free',
       createdAt: new Date().toISOString(),
     }
+    applyAdminEntitlements(user)
 
     store.users[user.id] = user
     const token = createSession(store, user.id)
@@ -511,6 +541,7 @@ async function handleAuth(request, response, url) {
     }
 
     user.lastLoginAt = new Date().toISOString()
+    applyAdminEntitlements(user)
     const token = createSession(store, user.id)
     await writeStore(store)
     sendJson(response, 200, { ok: true, token, user: publicUser(user) })
@@ -577,17 +608,22 @@ async function handleBilling(request, response, url) {
   }
 
   if (url.pathname === '/v1/billing/status' && request.method === 'GET') {
+    const admin = isAdminUser(auth.user)
     sendJson(response, 200, {
       ok: true,
       user: publicUser(auth.user),
       stripeConfigured: stripeConfigured(),
-      checkoutReady: stripeConfigured(),
-      portalReady: Boolean(STRIPE_SECRET_KEY && auth.user.stripeCustomerId),
+      checkoutReady: !admin && stripeConfigured(),
+      portalReady: !admin && Boolean(STRIPE_SECRET_KEY && auth.user.stripeCustomerId),
     })
     return
   }
 
   if (url.pathname === '/v1/billing/checkout' && request.method === 'POST') {
+    if (isAdminUser(auth.user)) {
+      sendJson(response, 200, { ok: true, admin: true, url: PUBLIC_APP_URL })
+      return
+    }
     if (!stripeConfigured()) {
       sendJson(response, 400, { error: 'stripe_not_configured' })
       return
@@ -611,6 +647,10 @@ async function handleBilling(request, response, url) {
   }
 
   if (url.pathname === '/v1/billing/portal' && request.method === 'POST') {
+    if (isAdminUser(auth.user)) {
+      sendJson(response, 400, { error: 'admin_billing_not_required' })
+      return
+    }
     if (!STRIPE_SECRET_KEY) {
       sendJson(response, 400, { error: 'stripe_not_configured' })
       return
@@ -1721,6 +1761,7 @@ export async function handleRequest(request, response) {
       protocol,
       serverKeyConfigured: Boolean(OPENAI_API_KEY),
       databaseConfigured: Boolean(DATABASE_URL),
+      adminConfigured: ADMIN_EMAILS.size > 0,
       stripeConfigured: stripeConfigured(),
       stripeWebhookConfigured: Boolean(STRIPE_WEBHOOK_SECRET),
       requireSubscription: REQUIRE_SUBSCRIPTION,

@@ -28,6 +28,8 @@ type AccountUser = {
   id: string
   email: string
   name: string
+  role?: string
+  isAdmin?: boolean
   subscriptionStatus: string
   billingPlan: string
   createdAt: string
@@ -206,6 +208,7 @@ function App() {
   )
 
   const connectedCount = useMemo(() => connectors.filter((connector) => connector.connected).length, [connectors])
+  const isAdminUser = Boolean(authSession?.user.isAdmin || authSession?.user.billingPlan === 'admin')
 
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEYS.endpoint, endpoint)
@@ -537,17 +540,18 @@ function App() {
                 <div className="account-card">
                   <strong>{authSession.user.email}</strong>
                   <span>
-                    {authSession.user.billingPlan === 'pro' ? 'Pro' : 'Free'} / {authSession.user.subscriptionStatus}
+                    {isAdminUser ? 'Admin' : authSession.user.billingPlan === 'pro' ? 'Pro' : 'Free'} /{' '}
+                    {authSession.user.subscriptionStatus}
                   </span>
                 </div>
                 <div className="button-grid">
                   <button type="button" onClick={() => void refreshBilling()} disabled={isBusy}>
                     <RefreshCcw size={16} /> 상태
                   </button>
-                  <button type="button" onClick={() => void startCheckout()} disabled={isBusy}>
+                  <button type="button" onClick={() => void startCheckout()} disabled={isBusy || isAdminUser}>
                     <CreditCard size={16} /> 구독
                   </button>
-                  <button type="button" onClick={() => void openPortal()} disabled={isBusy || !(billingStatus?.portalReady ?? false)}>
+                  <button type="button" onClick={() => void openPortal()} disabled={isBusy || isAdminUser || !(billingStatus?.portalReady ?? false)}>
                     <CreditCard size={16} /> 관리
                   </button>
                   <button type="button" onClick={() => void logout()} disabled={isBusy}>
