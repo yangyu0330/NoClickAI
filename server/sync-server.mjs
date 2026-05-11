@@ -50,6 +50,8 @@ const STORAGE_TARGET = DATABASE_URL ? `postgres:${STORE_TABLE}/${STORE_ID}` : DA
 const GMAIL_ACTIONS = ENABLE_GMAIL_DRAFTS
   ? ['gmail.prepare_message', 'gmail.create_draft', 'gmail.send_message']
   : ['gmail.prepare_message', 'gmail.send_message']
+const NOTION_ACTIONS = ['notion.prepare_page', 'notion.create_page']
+const SLACK_ACTIONS = ['slack.prepare_message', 'slack.post_message']
 const TELEGRAM_ACTIONS = ['telegram.prepare_message', 'telegram.send_message']
 const RELEASE_TAG = process.env.NOCLICK_RELEASE_TAG || 'v0.1.0-internal.1'
 const RELEASE_BASE_URL = `https://github.com/yangyu0330/NoClickAI/releases/download/${RELEASE_TAG}`
@@ -131,17 +133,17 @@ const CONNECTOR_DEFINITIONS = [
     id: 'notion',
     tokenProvider: 'notion',
     name: 'Notion',
-    type: 'oauth',
-    actions: ['notion.create_page'],
-    configured: () => Boolean(process.env.NOTION_CLIENT_ID && process.env.NOTION_CLIENT_SECRET),
+    type: 'oauth_or_share',
+    actions: NOTION_ACTIONS,
+    configured: () => true,
   },
   {
     id: 'slack',
     tokenProvider: 'slack',
     name: 'Slack',
-    type: 'oauth',
-    actions: ['slack.post_message'],
-    configured: () => Boolean(process.env.SLACK_CLIENT_ID && process.env.SLACK_CLIENT_SECRET),
+    type: 'oauth_or_share',
+    actions: SLACK_ACTIONS,
+    configured: () => true,
   },
   {
     id: 'telegram',
@@ -218,8 +220,8 @@ const OAUTH_PROVIDERS = {
 const ALLOWED_ACTIONS = {
   'google-calendar': ['calendar.create_event'],
   gmail: GMAIL_ACTIONS,
-  notion: ['notion.create_page'],
-  slack: ['slack.post_message'],
+  notion: NOTION_ACTIONS,
+  slack: SLACK_ACTIONS,
   telegram: TELEGRAM_ACTIONS,
   kakao: ['kakao.share_text'],
 }
@@ -943,7 +945,7 @@ function connectorStatuses(store, userId) {
     const providerKey = oauthProviderFromConnector(definition.id)
     const oauthProvider = OAUTH_PROVIDERS[providerKey]
     const missingConfig =
-      definition.type === 'bot' || definition.type === 'bot_or_share' || definition.type === 'share'
+      definition.type === 'bot' || definition.type === 'bot_or_share' || definition.type === 'oauth_or_share' || definition.type === 'share'
         ? []
         : [
             oauthProvider?.clientId ? '' : `${providerKey.toUpperCase()}_CLIENT_ID`,
@@ -961,7 +963,7 @@ function connectorStatuses(store, userId) {
       actions: definition.actions,
       configured: definition.configured(),
       connected,
-      needsOAuth: definition.type === 'oauth' || (definition.type === 'oauth_or_share' && definition.configured()),
+      needsOAuth: definition.type === 'oauth' || (definition.type === 'oauth_or_share' && Boolean(oauthProvider?.clientId && oauthProvider?.clientSecret)),
       redirectUri: oauthProvider?.redirectUri || '',
       scopes: oauthProvider?.scopes || [],
       missingConfig,
@@ -1158,6 +1160,33 @@ function connectorReadinessItems(store, userId) {
           botReady ? 'ready' : 'warning',
           botReady ? 'Telegram Bot API delivery is configured.' : 'Telegram Bot API delivery is not configured; share fallback remains available.',
           botReady ? '' : 'Set TELEGRAM_BOT_TOKEN and TELEGRAM_DEFAULT_CHAT_ID only when direct bot delivery is required.',
+        ),
+      ]
+    }
+
+    if (connector.type === 'oauth_or_share') {
+      const oauthReady =
+        connector.id === 'notion'
+          ? envPresent('NOTION_CLIENT_ID') && envPresent('NOTION_CLIENT_SECRET')
+          : connector.id === 'slack'
+            ? envPresent('SLACK_CLIENT_ID') && envPresent('SLACK_CLIENT_SECRET')
+            : false
+      return [
+        readinessItem(
+          `${connector.id}:configured`,
+          'connectors',
+          `${connector.name} prepared fallback`,
+          'ready',
+          `${connector.name} can prepare copyable content without OAuth credentials.`,
+          '',
+        ),
+        readinessItem(
+          `${connector.id}:oauth`,
+          'connectors',
+          `${connector.name} direct API delivery`,
+          oauthReady ? 'ready' : 'warning',
+          oauthReady ? `${connector.name} OAuth credentials are configured.` : `${connector.name} OAuth credentials are not configured; prepared fallback remains available.`,
+          oauthReady ? '' : `Set ${connector.id === 'notion' ? 'NOTION_CLIENT_ID and NOTION_CLIENT_SECRET' : 'SLACK_CLIENT_ID and SLACK_CLIENT_SECRET'} only when direct API delivery is required.`,
         ),
       ]
     }
@@ -1614,7 +1643,9 @@ const runSchema = {
               'gmail.prepare_message',
               'gmail.create_draft',
               'gmail.send_message',
+              'notion.prepare_page',
               'notion.create_page',
+              'slack.prepare_message',
               'slack.post_message',
               'telegram.prepare_message',
               'telegram.send_message',
@@ -1712,6 +1743,16 @@ function wantsKakaoShare(prompt) {
   return /kakao|kakaotalk|\uCE74\uCE74\uC624|\uCE74\uD1A1|\uCE74\uCE74\uC624\uD1A1/i.test(String(prompt || ''))
 }
 
+function wantsNotionPrepare(prompt) {
+  const text = String(prompt || '')
+  return /notion|\uB178\uC158/i.test(text) && /prepare|draft|copy|share|do not send|\uC900\uBE44|\uCD08\uC548|\uBCF5\uC0AC|\uACF5\uC720/i.test(text)
+}
+
+function wantsSlackPrepare(prompt) {
+  const text = String(prompt || '')
+  return /slack/i.test(text) && /prepare|draft|copy|share|do not send|\uC900\uBE44|\uCD08\uC548|\uBCF5\uC0AC|\uACF5\uC720/i.test(text)
+}
+
 function wantsTelegramShare(prompt) {
   return /telegram|\uD154\uB808\uADF8\uB7A8/i.test(String(prompt || ''))
 }
@@ -1732,7 +1773,7 @@ function extractPromptTail(prompt, label) {
 
 function normalizeActionRisk(action, risk) {
   if (risk === 'blocked') return risk
-  return ['gmail.send_message', 'slack.post_message', 'telegram.send_message'].includes(action) ? 'high' : risk
+  return ['gmail.send_message', 'notion.create_page', 'slack.post_message', 'telegram.send_message'].includes(action) ? 'high' : risk
 }
 
 function sanitizeStep(step, index, prompt = '') {
@@ -1954,6 +1995,86 @@ function createKakaoShareRun(userId, prompt) {
   }
 }
 
+function createNotionPreparedRun(userId, prompt) {
+  const normalized = String(prompt || '').trim()
+  const steps = [
+    sanitizeStep(
+      {
+        title: 'Notion 페이지 내용 준비',
+        provider: 'notion',
+        action: 'notion.prepare_page',
+        detail: 'Notion API 생성 대신 복사 가능한 페이지 제목과 본문을 준비합니다.',
+        preview: normalized,
+        risk: 'low',
+        input: {
+          title: 'NoClick AI Notion draft',
+          description: normalized,
+          when: '',
+          to: '',
+          subject: '',
+          body: normalized,
+          channel: '',
+          parentPageId: '',
+          chatId: '',
+        },
+      },
+      0,
+      normalized,
+    ),
+  ]
+
+  return {
+    id: `run_${crypto.randomBytes(10).toString('hex')}`,
+    userId,
+    prompt: normalized,
+    status: 'ready',
+    assistantMessage: 'Notion에 붙여넣을 페이지 내용을 준비했습니다. 실행 후 공유 버튼으로 복사할 수 있습니다.',
+    steps,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }
+}
+
+function createSlackPreparedRun(userId, prompt) {
+  const normalized = String(prompt || '').trim()
+  const steps = [
+    sanitizeStep(
+      {
+        title: 'Slack 메시지 텍스트 준비',
+        provider: 'slack',
+        action: 'slack.prepare_message',
+        detail: 'Slack API 전송 대신 복사 가능한 메시지 텍스트를 준비합니다.',
+        preview: normalized,
+        risk: 'low',
+        input: {
+          title: '',
+          description: normalized,
+          when: '',
+          to: '',
+          subject: '',
+          body: normalized,
+          channel: '',
+          parentPageId: '',
+          chatId: '',
+        },
+      },
+      0,
+      normalized,
+    ),
+  ]
+
+  return {
+    id: `run_${crypto.randomBytes(10).toString('hex')}`,
+    userId,
+    prompt: normalized,
+    status: 'ready',
+    assistantMessage: 'Slack에 붙여넣을 메시지 텍스트를 준비했습니다. 실행 후 공유 버튼으로 복사할 수 있습니다.',
+    steps,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }
+}
+
 function createTelegramShareRun(userId, prompt) {
   const normalized = String(prompt || '').trim()
   const steps = [
@@ -1996,6 +2117,8 @@ function createTelegramShareRun(userId, prompt) {
 
 async function createAiRun(user, prompt) {
   const userId = user.id
+  if (wantsNotionPrepare(prompt)) return createNotionPreparedRun(userId, prompt)
+  if (wantsSlackPrepare(prompt)) return createSlackPreparedRun(userId, prompt)
   if (wantsKakaoShare(prompt)) return createKakaoShareRun(userId, prompt)
   if (wantsTelegramShare(prompt)) return createTelegramShareRun(userId, prompt)
   if (isSimpleGmailSend(prompt)) return createGmailSendRun(userId, prompt)
@@ -2390,10 +2513,10 @@ async function executeGmailSend(store, run, step) {
 
 async function executeNotionPage(store, run, step) {
   const connection = getConnection(store, run.userId, 'notion')
-  if (!connection?.accessToken) return executionFailure('connection_required', 'Notion 연결이 필요합니다.')
+  if (!connection?.accessToken) return executeNotionPrepared(store, run, step)
 
   const parentPageId = step.input.parentPageId || process.env.NOTION_PARENT_PAGE_ID || process.env.NOCLICK_NOTION_PARENT_PAGE_ID
-  if (!parentPageId) return executionFailure('parent_page_required', 'Notion parent page ID가 필요합니다.')
+  if (!parentPageId) return executeNotionPrepared(store, run, step)
 
   const page = await fetchJson('https://api.notion.com/v1/pages', {
     method: 'POST',
@@ -2423,12 +2546,23 @@ async function executeNotionPage(store, run, step) {
   return { ok: true, message: 'Notion 페이지가 생성되었습니다.', externalId: page.id, link: page.url }
 }
 
+async function executeNotionPrepared(_store, run, step) {
+  const title = step.input.title || step.title
+  const body = step.input.body || step.input.description || step.preview || run.prompt
+  return {
+    ok: true,
+    code: 'content_prepared',
+    message: 'Notion 페이지 내용이 NoClick AI 안에 준비되었습니다. 공유 버튼으로 복사하세요.',
+    shareText: [`# ${title}`, '', body].join('\n'),
+  }
+}
+
 async function executeSlackMessage(store, run, step) {
   const connection = getConnection(store, run.userId, 'slack')
-  if (!connection?.accessToken) return executionFailure('connection_required', 'Slack 연결이 필요합니다.')
+  if (!connection?.accessToken) return executeSlackPrepared(store, run, step)
 
   const channel = step.input.channel || process.env.SLACK_DEFAULT_CHANNEL_ID
-  if (!channel) return executionFailure('channel_required', 'Slack 채널 ID가 필요합니다.')
+  if (!channel) return executeSlackPrepared(store, run, step)
 
   const result = await fetchJson('https://slack.com/api/chat.postMessage', {
     method: 'POST',
@@ -2443,6 +2577,15 @@ async function executeSlackMessage(store, run, step) {
   })
   if (!result.ok) return executionFailure(result.error || 'slack_error', result.error || 'Slack 메시지 전송 실패')
   return { ok: true, message: 'Slack 메시지가 전송되었습니다.', externalId: result.ts, channel: result.channel }
+}
+
+async function executeSlackPrepared(_store, run, step) {
+  return {
+    ok: true,
+    code: 'share_prepared',
+    message: 'Slack 메시지 텍스트가 NoClick AI 안에 준비되었습니다. 공유 버튼으로 복사하세요.',
+    shareText: step.input.body || step.preview || run.prompt,
+  }
 }
 
 async function executeTelegramMessage(_store, run, step) {
@@ -2535,7 +2678,9 @@ async function executeStep(store, run, step) {
   if (step.provider === 'gmail' && step.action === 'gmail.send_message') return executeGmailSend(store, run, step)
   if (step.provider === 'gmail' && step.action === 'gmail.create_draft') return executeGmailDraft(store, run, step)
   if (step.provider === 'gmail') return executeGmailPrepared(store, run, step)
+  if (step.provider === 'notion' && step.action === 'notion.prepare_page') return executeNotionPrepared(store, run, step)
   if (step.provider === 'notion') return executeNotionPage(store, run, step)
+  if (step.provider === 'slack' && step.action === 'slack.prepare_message') return executeSlackPrepared(store, run, step)
   if (step.provider === 'slack') return executeSlackMessage(store, run, step)
   if (step.provider === 'telegram' && step.action === 'telegram.prepare_message') return executeTelegramPrepared(store, run, step)
   if (step.provider === 'telegram') return executeTelegramMessage(store, run, step)

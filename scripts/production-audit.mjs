@@ -170,7 +170,15 @@ async function checkReadiness(baseUrl, account) {
   assert(response.ok, `/v1/readiness returned HTTP ${response.status}`)
   assert(body?.ok, '/v1/readiness did not return ok=true')
 
-  const requiredReadyIds = ['PRIVACY_POLICY_URL', 'TERMS_URL', 'DATA_DELETION_URL', 'telegram:configured', 'kakao:configured']
+  const requiredReadyIds = [
+    'PRIVACY_POLICY_URL',
+    'TERMS_URL',
+    'DATA_DELETION_URL',
+    'notion:configured',
+    'slack:configured',
+    'telegram:configured',
+    'kakao:configured',
+  ]
   for (const id of requiredReadyIds) {
     const item = body.items?.find((entry) => entry.id === id)
     assert(item, `/v1/readiness is missing ${id}`)
@@ -215,6 +223,41 @@ async function checkKakaoShareAutomation(baseUrl, account) {
   assert(String(executedStep.result?.shareText || '').includes(verificationText), 'Kakao share text is missing the verification text')
 
   resultLine('PASS', 'Kakao chat automation', `run=${created.body.run.id}`)
+}
+
+async function checkPreparedAutomation(baseUrl, account, provider, expectedAction, expectedCode, promptPrefix) {
+  const headers = { Authorization: `Bearer ${account.token}` }
+  const verificationText = `NoClick AI audit ${crypto.randomUUID().slice(0, 8)}`
+  const prompt = `${promptPrefix} containing "${verificationText}". Do not send it; only prepare copyable text.`
+
+  const created = await fetchJson(`${baseUrl}/v1/chat`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ message: prompt }),
+  })
+  assert(created.response.status === 201, `/v1/chat ${provider} request returned HTTP ${created.response.status}`)
+  assert(created.body?.run?.id, `/v1/chat ${provider} request did not return a run id`)
+
+  const plannedStep = created.body.run.steps?.find((step) => step.provider === provider)
+  assert(plannedStep, `${provider} prompt did not produce a ${provider} step`)
+  assert(plannedStep.action === expectedAction, `${provider} step used unexpected action ${plannedStep.action}`)
+  assert(plannedStep.status === 'ready', `${provider} step should be ready, got ${plannedStep.status}`)
+
+  const executed = await fetchJson(`${baseUrl}/v1/runs/${created.body.run.id}/execute`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ confirmHighRisk: true }),
+  })
+  assert(executed.response.ok, `/v1/runs/:id/execute ${provider} request returned HTTP ${executed.response.status}`)
+  assert(executed.body?.run?.status === 'done', `${provider} audit run status is ${executed.body?.run?.status}`)
+
+  const executedStep = executed.body.run.steps?.find((step) => step.provider === provider)
+  assert(executedStep?.status === 'done', `${provider} executed step status is ${executedStep?.status}`)
+  assert(executedStep.result?.ok === true, `${provider} prepared fallback did not return ok=true`)
+  assert(executedStep.result?.code === expectedCode, `${provider} prepared fallback returned ${executedStep.result?.code}`)
+  assert(String(executedStep.result?.shareText || '').includes(verificationText), `${provider} prepared text is missing the verification text`)
+
+  resultLine('PASS', `${provider} chat automation`, `run=${created.body.run.id}`)
 }
 
 async function checkTelegramShareAutomation(baseUrl, account) {
@@ -313,6 +356,8 @@ async function main() {
       account = { ...(await createAuditAccount(baseUrl)), temporary: true }
     }
     await checkReadiness(baseUrl, account)
+    await checkPreparedAutomation(baseUrl, account, 'notion', 'notion.prepare_page', 'content_prepared', 'Prepare a Notion page draft')
+    await checkPreparedAutomation(baseUrl, account, 'slack', 'slack.prepare_message', 'share_prepared', 'Prepare a Slack message')
     await checkTelegramShareAutomation(baseUrl, account)
     await checkKakaoShareAutomation(baseUrl, account)
     await checkHighRiskApprovalGate(baseUrl, account)
