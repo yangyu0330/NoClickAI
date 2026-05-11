@@ -11,6 +11,7 @@ NOCLICK_SYNC_TOKEN=replace-with-32-byte-random-token
 NOCLICK_PUBLIC_APP_URL=https://app.your-domain.example
 NOCLICK_SERVER_BASE_URL=https://api.your-domain.example
 NOCLICK_ALLOWED_ORIGIN=https://app.your-domain.example
+VITE_NOCLICK_SERVER_BASE_URL=https://api.your-domain.example
 NOCLICK_REQUIRE_SUBSCRIPTION=true
 NOCLICK_TOKEN_ENCRYPTION_KEY=replace-with-long-token-encryption-secret
 OPENAI_API_KEY=sk-...
@@ -61,6 +62,8 @@ npm run sync:server
 `GET /health` returns the active protocol, AI model, account support, billing support, and whether Stripe is configured.
 
 After signing in, `GET /v1/readiness` returns a production readiness checklist without exposing secret values. The web app shows the same checklist in the deployment readiness panel so missing provider credentials, billing settings, public OAuth verification, and app-signing manual gates are visible before launch.
+
+For packaged Android and Windows builds, set `VITE_NOCLICK_SERVER_BASE_URL` before `npm run android:sync` or `npm run desktop:dist`. Browser deployments can use same-origin API routing, but packaged apps run from a local WebView or `file://` origin and need a production HTTPS API default.
 
 ## Accounts
 

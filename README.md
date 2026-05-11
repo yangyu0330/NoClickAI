@@ -39,6 +39,8 @@ npm run lint
 npm run build
 ```
 
+Android/Windows처럼 설치형 앱을 빌드할 때는 앱 내부 기본 API 주소가 필요합니다. 배포 서버를 기본값으로 고정하려면 빌드 전에 `VITE_NOCLICK_SERVER_BASE_URL=https://noclickai-zeta.vercel.app`처럼 설정하세요.
+
 ## Android 앱
 
 ```bash

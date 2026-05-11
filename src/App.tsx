@@ -163,12 +163,22 @@ const STORAGE_KEYS = {
   activeRun: 'noclickai.activeRun',
 }
 
-const DEFAULT_ENDPOINT =
-  typeof window === 'undefined'
-    ? 'http://127.0.0.1:8788'
-    : window.location.port === '5173'
-      ? 'http://127.0.0.1:8788'
-      : window.location.origin
+const PACKAGED_APP_ENDPOINT = (import.meta.env.VITE_NOCLICK_SERVER_BASE_URL || 'https://noclickai-zeta.vercel.app').replace(
+  /\/+$/,
+  '',
+)
+
+function detectDefaultEndpoint() {
+  if (typeof window === 'undefined') return PACKAGED_APP_ENDPOINT
+  if (window.location.port === '5173') return 'http://127.0.0.1:8788'
+  if (window.location.protocol === 'file:') return PACKAGED_APP_ENDPOINT
+  if (window.location.protocol === 'https:' && window.location.hostname === 'localhost' && !window.location.port) {
+    return PACKAGED_APP_ENDPOINT
+  }
+  return window.location.origin
+}
+
+const DEFAULT_ENDPOINT = detectDefaultEndpoint()
 
 const QUICK_PROMPTS = [
   '내일 오전 10시에 회의 잡고 참석자에게 메일 초안 만들어줘',
@@ -809,7 +819,7 @@ function AppShell() {
               <input
                 value={endpoint}
                 onChange={(event) => setEndpoint(event.target.value)}
-                placeholder="http://127.0.0.1:8788"
+                placeholder={DEFAULT_ENDPOINT}
                 aria-label="API 서버 주소"
               />
             </section>
