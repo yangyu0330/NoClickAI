@@ -85,7 +85,9 @@ jobs:
 
       - name: Build Android release
         working-directory: android
-        run: ./gradlew assembleRelease bundleRelease --no-daemon
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleRelease bundleRelease --no-daemon
 
       - name: Stage Android artifacts
         shell: bash
@@ -136,7 +138,9 @@ jobs:
           CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
-        run: npm run desktop:dist
+        run: |
+          npm run build
+          npx electron-builder --publish never
 
       - name: Stage Windows artifacts
         shell: pwsh
