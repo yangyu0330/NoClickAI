@@ -42,6 +42,7 @@ const RATE_LIMIT_WINDOW_MS = 60_000
 const RATE_LIMIT_MAX = 90
 const SESSION_TTL_MS = Number(process.env.NOCLICK_SESSION_TTL_DAYS || 30) * 24 * 60 * 60 * 1000
 const STRIPE_SIGNATURE_TOLERANCE_SECONDS = 300
+const OPENAI_REQUEST_TIMEOUT_MS = Number(process.env.NOCLICK_OPENAI_TIMEOUT_MS || 25_000)
 const STORE_ID = 'default'
 const STORE_TABLE = 'noclick_store'
 const STORAGE_TARGET = DATABASE_URL ? `postgres:${STORE_TABLE}/${STORE_ID}` : DATA_FILE
@@ -1245,6 +1246,26 @@ function wantsGmailSend(prompt) {
   return mentionsMail && asksToSend && !/draft|\uCD08\uC548/.test(text)
 }
 
+function isSimpleGmailSend(prompt) {
+  const text = String(prompt || '').toLowerCase()
+  const mentionsOtherApp = /calendar|schedule|meeting|notion|slack|telegram|kakao|\uC77C\uC815|\uD68C\uC758|\uBBF8\uD305|\uB178\uC158/.test(text)
+  return wantsGmailSend(text) && !mentionsOtherApp
+}
+
+function extractFirstEmail(value) {
+  return String(value || '').match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] || ''
+}
+
+function extractPromptLabel(prompt, label) {
+  const match = String(prompt || '').match(new RegExp(`${label}\\s*:?\\s*([^\\n.]+)`, 'i'))
+  return match?.[1]?.trim() || ''
+}
+
+function extractPromptTail(prompt, label) {
+  const match = String(prompt || '').match(new RegExp(`${label}\\s*:?\\s*([\\s\\S]+)$`, 'i'))
+  return match?.[1]?.trim() || ''
+}
+
 function normalizeActionRisk(action, risk) {
   if (risk === 'blocked') return risk
   return action === 'gmail.send_message' ? 'high' : risk
@@ -1375,16 +1396,65 @@ function createFallbackRun(userId, prompt) {
   }
 }
 
+function createGmailSendRun(userId, prompt) {
+  const normalized = String(prompt || '').trim()
+  const explicitRecipient = extractFirstEmail(normalized)
+  const subject = extractPromptLabel(normalized, 'subject') || 'NoClick AI message'
+  const body =
+    extractPromptTail(normalized, 'body') ||
+    `NoClick AI verification message.\n\nOriginal request:\n${normalized}`
+  const steps = [
+    sanitizeStep(
+      {
+        title: 'Gmail 메일 발송',
+        provider: 'gmail',
+        action: 'gmail.send_message',
+        detail: '승인 후 Gmail에서 실제 메일을 발송합니다.',
+        preview: body,
+        risk: 'high',
+        input: {
+          title: '',
+          description: '',
+          when: '',
+          to: explicitRecipient,
+          subject,
+          body,
+          channel: '',
+          parentPageId: '',
+          chatId: '',
+        },
+      },
+      0,
+      normalized,
+    ),
+  ]
+
+  return {
+    id: `run_${crypto.randomBytes(10).toString('hex')}`,
+    userId,
+    prompt: normalized,
+    status: 'needs_approval',
+    assistantMessage: '메일 발송 계획을 만들었습니다. 수신자, 제목, 내용을 확인한 뒤 승인하고 실행하세요.',
+    steps,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }
+}
+
 async function createAiRun(user, prompt) {
   const userId = user.id
+  if (isSimpleGmailSend(prompt)) return createGmailSendRun(userId, prompt)
   if (!OPENAI_API_KEY) return createFallbackRun(userId, prompt)
 
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), OPENAI_REQUEST_TIMEOUT_MS)
   const openAiResponse = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${OPENAI_API_KEY}`,
       'Content-Type': 'application/json',
     },
+    signal: controller.signal,
     body: JSON.stringify({
       model: OPENAI_MODEL,
       input: [
@@ -1407,7 +1477,9 @@ async function createAiRun(user, prompt) {
         },
       },
     }),
-  })
+  }).catch(() => null)
+  clearTimeout(timeout)
+  if (!openAiResponse) return createFallbackRun(userId, prompt)
 
   const body = await openAiResponse.json().catch(() => ({}))
   if (!openAiResponse.ok) return createFallbackRun(userId, prompt)
@@ -1440,12 +1512,15 @@ async function createAiPlan(request) {
   if (!openAiKey) return { status: 400, body: { error: 'openai_key_required' } }
   if (!prompt) return { status: 400, body: { error: 'prompt_required' } }
 
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), OPENAI_REQUEST_TIMEOUT_MS)
   const openAiResponse = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${openAiKey}`,
       'Content-Type': 'application/json',
     },
+    signal: controller.signal,
     body: JSON.stringify({
       model: body.model || OPENAI_MODEL,
       input: [
@@ -1468,7 +1543,17 @@ async function createAiPlan(request) {
         },
       },
     }),
-  })
+  }).catch(() => null)
+  clearTimeout(timeout)
+  if (!openAiResponse) {
+    return {
+      status: 504,
+      body: {
+        error: 'openai_request_timeout',
+        detail: 'OpenAI planning request timed out.',
+      },
+    }
+  }
 
   const responseBody = await openAiResponse.json().catch(() => ({}))
   if (!openAiResponse.ok) {
