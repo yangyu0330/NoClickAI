@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { readFileSync } from 'node:fs'
+import { appendFileSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
 
@@ -249,6 +249,20 @@ function commandName(name) {
 }
 
 function run(command, args, options = {}) {
+  if (process.env.NOCLICK_LAUNCH_ENV_COMMAND_LOG) {
+    appendFileSync(process.env.NOCLICK_LAUNCH_ENV_COMMAND_LOG, `${JSON.stringify({
+      command,
+      args,
+      stdinLength: options.input ? String(options.input).length : 0,
+    })}\n`)
+
+    if (command === 'git' && args[0] === 'rev-parse' && args[1] === 'HEAD') {
+      return process.env.NOCLICK_LAUNCH_ENV_FAKE_COMMIT || ''
+    }
+
+    return ''
+  }
+
   const result = spawnSync(command, args, {
     cwd: process.cwd(),
     encoding: 'utf8',
