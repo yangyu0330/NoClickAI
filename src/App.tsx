@@ -43,11 +43,15 @@ type AuthSession = {
 type ConnectorStatus = {
   id: string
   name: string
+  provider: string
   type: string
   actions: string[]
   configured: boolean
   connected: boolean
   needsOAuth: boolean
+  redirectUri?: string
+  scopes?: string[]
+  missingConfig?: string[]
 }
 
 type StepStatus = 'ready' | 'needs_approval' | 'approved' | 'running' | 'done' | 'failed' | 'blocked'
@@ -162,6 +166,7 @@ function newMessage(role: ChatMessage['role'], text: string): ChatMessage {
 }
 
 function connectorCopy(connector: ConnectorStatus) {
+  if (!connector.configured && connector.missingConfig?.length) return `${connector.missingConfig.join(', ')} 필요`
   if (!connector.configured) return '서버 설정 필요'
   if (connector.connected) return '연결됨'
   if (connector.id === 'telegram') return 'Bot 설정 필요'
@@ -360,9 +365,11 @@ function App() {
       return
     }
     if (!connector.configured) {
+      const missing = connector.missingConfig?.length ? connector.missingConfig.join(', ') : 'OAuth Client ID/Secret'
+      const redirect = connector.redirectUri ? `\nRedirect URI: ${connector.redirectUri}` : ''
       setMessages((items) => [
         ...items,
-        newMessage('assistant', `${connector.name} OAuth Client ID/Secret이 서버에 아직 설정되지 않았습니다.`),
+        newMessage('assistant', `${connector.name} 설정이 필요합니다. Vercel에 ${missing} 값을 넣어주세요.${redirect}`),
       ])
       return
     }

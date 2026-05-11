@@ -96,6 +96,7 @@ Chat, Runs, Connectors, Sync 요청에는 로그인 세션 토큰 또는 `Author
 기본 AI 모델은 `gpt-5-nano`입니다. OpenAI 공식 가격표 기준 텍스트 모델 중 가장 저렴한 GPT-5 계열이며, NoClick AI의 짧은 한국어 JSON 실행계획 생성에는 비용 대비 가장 적합한 기본값입니다. 필요하면 `NOCLICK_OPENAI_MODEL` 환경변수로 교체할 수 있습니다.
 
 HTTPS, Stripe 구독, Android 릴리스 서명, Windows 코드 서명 설정은 [deployment.md](docs/deployment.md)를 참고하세요.
+Google Calendar/Gmail 실제 OAuth 연결은 [google-oauth.md](docs/google-oauth.md)를 참고하세요.
 
 ## 데모 시나리오
 

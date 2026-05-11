@@ -809,6 +809,15 @@ function saveConnection(store, userId, tokenProvider, payload) {
 
 function connectorStatuses(store, userId) {
   return CONNECTOR_DEFINITIONS.map((definition) => {
+    const providerKey = oauthProviderFromConnector(definition.id)
+    const oauthProvider = OAUTH_PROVIDERS[providerKey]
+    const missingConfig =
+      definition.type === 'bot'
+        ? []
+        : [
+            oauthProvider?.clientId ? '' : `${providerKey.toUpperCase()}_CLIENT_ID`,
+            oauthProvider?.clientSecret ? '' : `${providerKey.toUpperCase()}_CLIENT_SECRET`,
+          ].filter(Boolean)
     const connected =
       definition.id === 'telegram'
         ? definition.configured()
@@ -816,11 +825,15 @@ function connectorStatuses(store, userId) {
     return {
       id: definition.id,
       name: definition.name,
+      provider: providerKey,
       type: definition.type,
       actions: definition.actions,
       configured: definition.configured(),
       connected,
       needsOAuth: definition.type === 'oauth' || definition.type === 'oauth_or_share',
+      redirectUri: oauthProvider?.redirectUri || '',
+      scopes: oauthProvider?.scopes || [],
+      missingConfig,
     }
   })
 }
@@ -832,6 +845,7 @@ function oauthProviderFromConnector(providerId) {
 function buildOAuthUrl(store, userId, providerId) {
   const providerKey = oauthProviderFromConnector(providerId)
   const provider = OAUTH_PROVIDERS[providerKey]
+  const user = store.users[userId]
   if (!provider || !provider.clientId || !provider.clientSecret) {
     const error = new Error('connector_not_configured')
     error.statusCode = 400
@@ -858,6 +872,7 @@ function buildOAuthUrl(store, userId, providerId) {
     params.set('access_type', 'offline')
     params.set('prompt', 'consent')
     params.set('include_granted_scopes', 'true')
+    if (user?.email) params.set('login_hint', user.email)
   }
 
   if (providerKey === 'notion') {
@@ -1044,6 +1059,15 @@ async function handleConnectors(request, response, url) {
 }
 
 async function handleOAuthCallback(request, response, url, providerKey) {
+  const oauthError = url.searchParams.get('error')
+  if (oauthError) {
+    redirect(
+      response,
+      `${PUBLIC_APP_URL}?connector=${encodeURIComponent(providerKey)}&status=failed&reason=${encodeURIComponent(oauthError)}`,
+    )
+    return
+  }
+
   const code = url.searchParams.get('code')
   const state = url.searchParams.get('state')
   if (!code || !state) {
@@ -1296,7 +1320,8 @@ function createFallbackRun(userId, prompt) {
   }
 }
 
-async function createAiRun(userId, prompt) {
+async function createAiRun(user, prompt) {
+  const userId = user.id
   if (!OPENAI_API_KEY) return createFallbackRun(userId, prompt)
 
   const openAiResponse = await fetch('https://api.openai.com/v1/responses', {
@@ -1311,11 +1336,11 @@ async function createAiRun(userId, prompt) {
         {
           role: 'system',
           content:
-            'You are NoClick AI. Convert Korean chat requests into safe automation tool calls. Prefer Calendar, Gmail draft, Notion page, Slack message, Telegram bot, and Kakao share actions. Never execute payment, transfer, account deletion, password change, or mass personal data submission; mark those steps blocked. High-risk message sending requires approval.',
+            'You are NoClick AI. Convert Korean chat requests into safe automation tool calls. Prefer Google Calendar event creation and Gmail draft creation when the request mentions schedules, meetings, invitations, or email drafts. For calendar steps, put input.when as an ISO 8601 date-time with timezone. For Gmail drafts, put input.to as an email address; if the user says "나에게", "내게", "본인에게", "me", or "myself", use the current user email. Never execute payment, transfer, account deletion, password change, or mass personal data submission; mark those steps blocked. High-risk message sending requires approval.',
         },
         {
           role: 'user',
-          content: `현재 시각: ${new Date().toLocaleString('ko-KR')}\n사용자 요청: ${prompt}`,
+          content: `현재 시각: ${new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}\n현재 사용자 이메일: ${user.email}\n사용자 요청: ${prompt}`,
         },
       ],
       text: {
@@ -1331,7 +1356,12 @@ async function createAiRun(userId, prompt) {
 
   const body = await openAiResponse.json().catch(() => ({}))
   if (!openAiResponse.ok) return createFallbackRun(userId, prompt)
-  const payload = JSON.parse(extractOutputText(body))
+  let payload
+  try {
+    payload = JSON.parse(extractOutputText(body))
+  } catch {
+    return createFallbackRun(userId, prompt)
+  }
   const steps = payload.steps.map(sanitizeStep)
 
   return {
@@ -1419,11 +1449,28 @@ async function fetchJson(url, options) {
   return body
 }
 
+function parseCalendarStart(value) {
+  if (!value) return new Date(Date.now() + 60 * 60 * 1000)
+  const start = new Date(value)
+  return Number.isFinite(start.getTime()) ? start : null
+}
+
+function isSelfAddressed(prompt) {
+  return /나에게|내게|본인에게|me|myself/i.test(String(prompt || ''))
+}
+
+function resolveGmailRecipient(store, run, step) {
+  const explicit = String(step.input.to || '').trim()
+  if (explicit) return explicit
+  return isSelfAddressed(run.prompt) ? store.users[run.userId]?.email || '' : ''
+}
+
 async function executeGoogleCalendar(store, run, step) {
   const connection = await refreshGoogleTokenIfNeeded(store, run.userId)
   if (!connection?.accessToken) return executionFailure('connection_required', 'Google 연결이 필요합니다.')
 
-  const start = step.input.when ? new Date(step.input.when) : new Date(Date.now() + 60 * 60 * 1000)
+  const start = parseCalendarStart(step.input.when)
+  if (!start) return executionFailure('invalid_event_time', 'Calendar 일정 시간이 ISO 8601 형식이 아니어서 실행할 수 없습니다.')
   const end = new Date(start.getTime() + 60 * 60 * 1000)
   const event = await fetchJson('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
     method: 'POST',
@@ -1444,14 +1491,16 @@ async function executeGoogleCalendar(store, run, step) {
 async function executeGmailDraft(store, run, step) {
   const connection = await refreshGoogleTokenIfNeeded(store, run.userId)
   if (!connection?.accessToken) return executionFailure('connection_required', 'Gmail 연결이 필요합니다.')
-  if (!step.input.to) return executionFailure('recipient_required', '메일 수신자가 필요합니다.')
+  const recipient = resolveGmailRecipient(store, run, step)
+  if (!recipient) return executionFailure('recipient_required', '메일 수신자가 필요합니다.')
 
   const subject = step.input.subject || step.title
   const body = step.input.body || step.input.description || run.prompt
   const raw = Buffer.from(
     [
-      `To: ${step.input.to}`,
+      `To: ${recipient}`,
       `Subject: =?UTF-8?B?${Buffer.from(subject).toString('base64')}?=`,
+      'MIME-Version: 1.0',
       'Content-Type: text/plain; charset="UTF-8"',
       '',
       body,
@@ -1636,7 +1685,7 @@ async function handleRuns(request, response, url) {
       sendJson(response, 400, { error: 'prompt_required' })
       return
     }
-    const run = await createAiRun(auth.user.id, prompt)
+    const run = await createAiRun(auth.user, prompt)
     store.runs[run.id] = run
     await writeStore(store)
     sendJson(response, 201, { ok: true, run })
@@ -1728,7 +1777,7 @@ async function handleChat(request, response) {
     return
   }
 
-  const run = await createAiRun(auth.user.id, message)
+  const run = await createAiRun(auth.user, message)
   store.runs[run.id] = run
   await writeStore(store)
   sendJson(response, 201, {
