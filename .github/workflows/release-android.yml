@@ -1,0 +1,182 @@
+name: Build Signed Android Package
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag used in Android artifact filenames
+        required: true
+        type: string
+        default: v0.1.0-android
+      require_signing:
+        description: Fail if Android signing secrets are missing
+        required: false
+        type: boolean
+        default: true
+      create_github_release:
+        description: Attach Android artifacts to the GitHub release
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    name: Signed Android APK and AAB
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Sync Capacitor Android project
+        run: npm run android:sync
+
+      - name: Configure Android signing
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          missing=0
+          if [ "${{ inputs.require_signing }}" = "true" ]; then
+            for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+              if [ -z "${!name}" ]; then
+                echo "Missing $name secret"
+                missing=1
+              fi
+            done
+            if [ "$missing" -ne 0 ]; then
+              exit 1
+            fi
+          fi
+
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/noclickai-release.jks
+            test -s android/noclickai-release.jks || { echo "Decoded Android keystore is empty"; exit 1; }
+            {
+              printf 'storeFile=noclickai-release.jks\n'
+              printf 'storePassword=%s\n' "$ANDROID_KEYSTORE_PASSWORD"
+              printf 'keyAlias=%s\n' "$ANDROID_KEY_ALIAS"
+              printf 'keyPassword=%s\n' "$ANDROID_KEY_PASSWORD"
+            } > android/keystore.properties
+            keytool -list \
+              -keystore android/noclickai-release.jks \
+              -storepass "$ANDROID_KEYSTORE_PASSWORD" \
+              -alias "$ANDROID_KEY_ALIAS" >/dev/null
+          fi
+
+      - name: Build Android release
+        working-directory: android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleRelease bundleRelease --no-daemon
+
+      - name: Verify Android release signatures
+        shell: bash
+        run: |
+          mkdir -p artifacts/android
+          apk_path="$(find android/app/build/outputs/apk/release -type f -name '*.apk' | head -n 1)"
+          aab_path="$(find android/app/build/outputs/bundle/release -type f -name '*.aab' | head -n 1)"
+          test -n "$apk_path" || { echo "Android release APK was not found"; exit 1; }
+          test -n "$aab_path" || { echo "Android release AAB was not found"; exit 1; }
+
+          if [ "${{ inputs.require_signing }}" != "true" ]; then
+            {
+              echo "NoClick AI Android signing evidence"
+              echo "Release tag: ${{ inputs.release_tag }}"
+              echo "Commit: $GITHUB_SHA"
+              echo "Signing required: false"
+              echo "Status: skipped for unsigned internal package testing"
+              echo "Generated at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            } > artifacts/android/ANDROID-SIGNING-EVIDENCE.txt
+            exit 0
+          fi
+
+          apksigner="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -x "$apksigner" || { echo "Android apksigner was not found"; exit 1; }
+
+          evidence="artifacts/android/ANDROID-SIGNING-EVIDENCE.txt"
+          {
+            echo "NoClick AI Android signing evidence"
+            echo "Release tag: ${{ inputs.release_tag }}"
+            echo "Commit: $GITHUB_SHA"
+            echo "Signing required: true"
+            echo "Generated at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo
+            echo "APK: $(basename "$apk_path")"
+          } > "$evidence"
+          "$apksigner" verify --verbose --print-certs "$apk_path" | tee -a "$evidence"
+          {
+            echo
+            echo "AAB: $(basename "$aab_path")"
+          } >> "$evidence"
+          jarsigner -verify "$aab_path" | tee -a "$evidence"
+
+      - name: Stage Android artifacts
+        shell: bash
+        run: |
+          mkdir -p artifacts/android
+          apk_path="$(find android/app/build/outputs/apk/release -type f -name '*.apk' | head -n 1)"
+          aab_path="$(find android/app/build/outputs/bundle/release -type f -name '*.aab' | head -n 1)"
+          test -n "$apk_path" || { echo "Android release APK was not found"; exit 1; }
+          test -n "$aab_path" || { echo "Android release AAB was not found"; exit 1; }
+          cp "$apk_path" "artifacts/android/NoClickAI-Android-${{ inputs.release_tag }}.apk"
+          cp "$aab_path" "artifacts/android/NoClickAI-Android-${{ inputs.release_tag }}.aab"
+          (cd artifacts/android && sha256sum * > SHA256SUMS-android.txt)
+
+      - name: Upload Android artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: noclickai-android-signed-${{ inputs.release_tag }}
+          path: artifacts/android/*
+          if-no-files-found: error
+
+  github-release:
+    name: GitHub release
+    runs-on: ubuntu-latest
+    needs:
+      - android
+    if: inputs.create_github_release
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download Android artifacts
+        uses: actions/download-artifact@v6
+        with:
+          name: noclickai-android-signed-${{ inputs.release_tag }}
+          path: release-artifacts/android
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh release view "${{ inputs.release_tag }}" >/dev/null 2>&1 ||
+            gh release create "${{ inputs.release_tag }}" --title "NoClick AI ${{ inputs.release_tag }}" --notes "NoClick AI signed Android package release."
+          while IFS= read -r -d '' file; do
+            gh release upload "${{ inputs.release_tag }}" "$file" --clobber
+          done < <(find release-artifacts -type f -print0)

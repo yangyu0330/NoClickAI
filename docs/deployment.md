@@ -194,6 +194,8 @@ The repository includes a manual `Build App Packages` workflow. It builds:
 
 Run it with `require_signing=false` only for internal unsigned package testing. For public release builds, keep `require_signing=true` and configure these GitHub repository secrets:
 
+If Android signing is ready before Windows code-signing, use the manual `Build Signed Android Package` workflow instead. It has the same Android signing checks but does not require `WINDOWS_CSC_LINK` or `WINDOWS_CSC_KEY_PASSWORD`, so it can produce a verified signed AAB for Play Console upload while Windows distribution remains blocked.
+
 Before dispatching a signed build, run:
 
 ```bash

@@ -363,6 +363,8 @@ npx vercel@latest deploy --prod --yes --force -e NOCLICK_COMMIT_SHA="$(git rev-p
 
 For app packages, use the manual `Build App Packages` workflow. It builds Android APK/AAB and the Windows installer, verifies signatures when `require_signing=true`, uploads workflow artifacts, and can attach them to a GitHub release when signing secrets are configured.
 
+When Android signing is ready but Windows code-signing is still pending, use the manual `Build Signed Android Package` workflow. It requires only the Android signing secrets, builds a signed APK/AAB, verifies the APK with `apksigner`, verifies the AAB with `jarsigner`, and uploads `ANDROID-SIGNING-EVIDENCE.txt` with the Android artifacts.
+
 Before running signed public packages, check whether the required GitHub Actions signing secrets exist:
 
 ```bash
