@@ -258,6 +258,13 @@ npx vercel@latest inspect https://noclickai-zeta.vercel.app
 
 The repository also includes a manual GitHub Actions workflow named `Deploy Production`. Configure `VERCEL_TOKEN`, `VERCEL_ORG_ID`, and `VERCEL_PROJECT_ID` as repository secrets, then run the workflow to verify, deploy to Vercel Production, inspect the deployment, run `npm run audit:production`, and check recent Production error logs.
 
+If `Deploy Production` fails at `Validate Vercel token`, create a new Vercel account token and update the GitHub secret:
+
+```powershell
+$env:VERCEL_TOKEN='new-vercel-token'
+gh secret set VERCEL_TOKEN --repo yangyu0330/NoClickAI --body $env:VERCEL_TOKEN
+```
+
 For app packages, use the manual `Build App Packages` workflow. It builds Android APK/AAB and the Windows installer, verifies signatures when `require_signing=true`, uploads workflow artifacts, and can attach them to a GitHub release when signing secrets are configured.
 
 Production readiness:
