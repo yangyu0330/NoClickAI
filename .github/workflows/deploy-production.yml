@@ -93,6 +93,12 @@ jobs:
       - name: Check Stripe launch smoke syntax
         run: node --check scripts/stripe-launch-smoke.mjs
 
+      - name: Check release preflight script syntax
+        run: node --check scripts/release-signing-preflight.mjs
+
+      - name: Check release preflight smoke syntax
+        run: node --check scripts/release-signing-preflight-smoke.mjs
+
       - name: Check billing smoke syntax
         run: node --check scripts/billing-webhook-smoke.mjs
 
@@ -163,6 +169,9 @@ jobs:
 
       - name: Stripe launch smoke
         run: npm run test:launch-stripe
+
+      - name: Release signing preflight smoke
+        run: npm run test:release-preflight
 
       - name: Readiness smoke
         run: npm run test:readiness

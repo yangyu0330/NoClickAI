@@ -194,6 +194,14 @@ The repository includes a manual `Build App Packages` workflow. It builds:
 
 Run it with `require_signing=false` only for internal unsigned package testing. For public release builds, keep `require_signing=true` and configure these GitHub repository secrets:
 
+Before dispatching a signed build, run:
+
+```bash
+npm run release:preflight -- --repo yangyu0330/NoClickAI
+```
+
+It checks only secret names through GitHub CLI and does not read secret values.
+
 Android:
 
 - `ANDROID_KEYSTORE_BASE64`: base64-encoded `.jks` or `.keystore` file

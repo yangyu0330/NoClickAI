@@ -82,12 +82,13 @@ npm run build
 npm run test:launch-evidence
 npm run test:launch-env
 npm run test:launch-stripe
+npm run test:release-preflight
 npm run test:billing
 npm run test:readiness
 npm run test:e2e
 ```
 
-The GitHub Actions CI workflow runs `npm ci`, server syntax checks, audit-script syntax checks, high-severity dependency audit, lint, build, local launch-evidence smoke, local launch-env smoke, local Stripe launch smoke, local billing webhook smoke, local readiness smoke, and a Playwright smoke test on pushes to `main` and pull requests.
+The GitHub Actions CI workflow runs `npm ci`, server syntax checks, audit-script syntax checks, high-severity dependency audit, lint, build, local launch-evidence smoke, local launch-env smoke, local Stripe launch smoke, release-signing preflight smoke, local billing webhook smoke, local readiness smoke, and a Playwright smoke test on pushes to `main` and pull requests.
 
 The local billing smoke starts an isolated sync server with subscription enforcement enabled, rejects an unsigned Stripe webhook, applies signed checkout, past-due, payment-recovery, and deletion events, and verifies paid routes open and close with the Stripe subscription state:
 
@@ -361,6 +362,12 @@ npx vercel@latest deploy --prod --yes --force -e NOCLICK_COMMIT_SHA="$(git rev-p
 ```
 
 For app packages, use the manual `Build App Packages` workflow. It builds Android APK/AAB and the Windows installer, verifies signatures when `require_signing=true`, uploads workflow artifacts, and can attach them to a GitHub release when signing secrets are configured.
+
+Before running signed public packages, check whether the required GitHub Actions signing secrets exist:
+
+```bash
+npm run release:preflight -- --repo yangyu0330/NoClickAI
+```
 
 Production readiness:
 

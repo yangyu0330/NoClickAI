@@ -28,6 +28,8 @@
     "test:e2e": "playwright test",
     "test:e2e:production": "node scripts/production-e2e.mjs",
     "preview": "vite preview",
+    "release:preflight": "node scripts/release-signing-preflight.mjs",
+    "test:release-preflight": "node scripts/release-signing-preflight-smoke.mjs",
     "desktop:dev": "npm run build && electron .",
     "desktop:dist": "npm run build && electron-builder",
     "desktop:dist:signed": "npm run build && node --env-file-if-exists=.env ./node_modules/electron-builder/cli.js",
