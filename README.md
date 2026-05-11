@@ -74,6 +74,8 @@ npm run lint
 npm run build
 ```
 
+The GitHub Actions CI workflow runs `npm ci`, server syntax checks, audit-script syntax checks, lint, and build on pushes to `main` and pull requests.
+
 Audit the production deployment:
 
 ```bash
@@ -261,6 +263,8 @@ Optional audit environment variables:
 - `NOCLICK_AUDIT_BASE_URL`: target deployment URL
 - `NOCLICK_AUDIT_EMAIL` and `NOCLICK_AUDIT_PASSWORD`: existing admin/pro account for paid-launch audits
 - `NOCLICK_AUDIT_TOKEN`: existing session token when password login should not be used
+
+The same audit can be run from GitHub Actions through the manual `CI` workflow by enabling `run_production_audit`. Store audit credentials as repository secrets named `NOCLICK_AUDIT_EMAIL`, `NOCLICK_AUDIT_PASSWORD`, or `NOCLICK_AUDIT_TOKEN`.
 
 ## Documentation
 
