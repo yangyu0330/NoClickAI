@@ -1,7 +1,10 @@
 import { expect, test } from '@playwright/test'
 import type { APIRequestContext } from '@playwright/test'
 
-const API_BASE_URL = 'http://127.0.0.1:58788'
+const API_BASE_URL = (process.env.NOCLICK_E2E_API_BASE_URL || process.env.NOCLICK_E2E_BASE_URL || 'http://127.0.0.1:58788').replace(
+  /\/+$/,
+  '',
+)
 
 async function deleteAccount(request: APIRequestContext, email: string, token: string) {
   await request.post(`${API_BASE_URL}/v1/auth/delete-account`, {
@@ -12,8 +15,11 @@ async function deleteAccount(request: APIRequestContext, email: string, token: s
 
 test('chat-first automation flow creates an approval-gated run', async ({ page, request }) => {
   const suffix = Date.now().toString(36)
-  const email = `noclick-e2e-${suffix}@example.com`
-  const password = `E2ePass!${suffix}`
+  const configuredEmail = process.env.NOCLICK_E2E_EMAIL || process.env.NOCLICK_AUDIT_EMAIL || ''
+  const configuredPassword = process.env.NOCLICK_E2E_PASSWORD || process.env.NOCLICK_AUDIT_PASSWORD || ''
+  const useConfiguredAccount = Boolean(configuredEmail && configuredPassword)
+  const email = useConfiguredAccount ? configuredEmail : `noclick-e2e-${suffix}@example.com`
+  const password = useConfiguredAccount ? configuredPassword : `E2ePass!${suffix}`
   let token = ''
 
   page.on('console', (message) => {
@@ -33,7 +39,7 @@ test('chat-first automation flow creates an approval-gated run', async ({ page, 
 
     await page.getByTestId('account-email-input').fill(email)
     await page.getByTestId('account-password-input').fill(password)
-    await page.getByTestId('account-register').click()
+    await page.getByTestId(useConfiguredAccount ? 'account-login' : 'account-register').click()
     await expect(page.getByTestId('account-email')).toHaveText(email)
 
     const session = await page.evaluate(() => window.localStorage.getItem('noclickai.authSession'))
@@ -50,6 +56,6 @@ test('chat-first automation flow creates an approval-gated run', async ({ page, 
     await page.getByTestId('run-approve').click()
     await expect(page.getByTestId('run-execute')).toBeEnabled()
   } finally {
-    if (token) await deleteAccount(request, email, token).catch(() => undefined)
+    if (token && !useConfiguredAccount) await deleteAccount(request, email, token).catch(() => undefined)
   }
 })

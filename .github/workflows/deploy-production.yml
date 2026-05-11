@@ -222,6 +222,16 @@ jobs:
           NOCLICK_AUDIT_EXPECTED_COMMIT: ${{ github.sha }}
           NOCLICK_AUDIT_REQUIRE_ADMIN: ${{ inputs.require_admin_audit }}
 
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run production E2E smoke
+        run: npm run test:e2e:production
+        env:
+          NOCLICK_E2E_BASE_URL: ${{ inputs.audit_base_url }}
+          NOCLICK_E2E_EMAIL: ${{ secrets.NOCLICK_AUDIT_EMAIL }}
+          NOCLICK_E2E_PASSWORD: ${{ secrets.NOCLICK_AUDIT_PASSWORD }}
+
       - name: Check production error logs
         if: always() && steps.validate_vercel_token.outputs.valid == 'true'
         run: npx vercel@latest logs --level error --since 1h --environment production --no-branch --no-follow --token "$VERCEL_TOKEN"

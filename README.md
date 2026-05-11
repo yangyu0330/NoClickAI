@@ -84,6 +84,12 @@ npm run test:e2e
 
 The GitHub Actions CI workflow runs `npm ci`, server syntax checks, audit-script syntax checks, high-severity dependency audit, lint, build, and a Playwright smoke test on pushes to `main` and pull requests.
 
+Run the same browser smoke against the deployed app:
+
+```bash
+npm run test:e2e:production
+```
+
 Audit the production deployment:
 
 ```bash

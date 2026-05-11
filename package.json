@@ -18,6 +18,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "test:e2e": "playwright test",
+    "test:e2e:production": "node scripts/production-e2e.mjs",
     "preview": "vite preview",
     "desktop:dev": "npm run build && electron .",
     "desktop:dist": "npm run build && electron-builder",

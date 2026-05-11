@@ -121,6 +121,14 @@ For the final public-launch gate, run the same audit in strict mode:
 npm run audit:production -- --strict-launch
 ```
 
+Run a browser-level production smoke test after the API audit:
+
+```bash
+npm run test:e2e:production
+```
+
+The production smoke test opens the deployed app, signs in with `NOCLICK_E2E_EMAIL`/`NOCLICK_E2E_PASSWORD` or creates a temporary account, sends a high-risk Gmail request, verifies the approval gate, and deletes temporary accounts. `Deploy Production` runs this smoke test automatically after the production audits.
+
 For a concise operator checklist before re-running the full strict gate:
 
 ```bash
