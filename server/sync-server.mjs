@@ -9,6 +9,10 @@ import crypto from 'node:crypto'
 import { neon } from '@neondatabase/serverless'
 import { BUILD_COMMIT_SHA } from './build-meta.generated.mjs'
 
+function envFlag(name) {
+  return ['1', 'true', 'yes', 'on'].includes(String(process.env[name] || '').trim().toLowerCase())
+}
+
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const DATA_DIR = process.env.NOCLICK_SYNC_DATA_DIR || (process.env.VERCEL ? join(tmpdir(), 'noclick-data') : join(__dirname, 'data'))
 const DATA_FILE = join(DATA_DIR, 'workspaces.json')
@@ -31,10 +35,10 @@ const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || ''
 const STRIPE_SUCCESS_URL = process.env.STRIPE_SUCCESS_URL || `${PUBLIC_APP_URL}?billing=success`
 const STRIPE_CANCEL_URL = process.env.STRIPE_CANCEL_URL || `${PUBLIC_APP_URL}?billing=cancel`
 const STRIPE_PORTAL_RETURN_URL = process.env.STRIPE_PORTAL_RETURN_URL || PUBLIC_APP_URL
-const REQUIRE_SUBSCRIPTION = process.env.NOCLICK_REQUIRE_SUBSCRIPTION === 'true'
+const REQUIRE_SUBSCRIPTION = envFlag('NOCLICK_REQUIRE_SUBSCRIPTION')
 const TOKEN_ENCRYPTION_KEY = process.env.NOCLICK_TOKEN_ENCRYPTION_KEY || SYNC_TOKEN
-const ENABLE_GMAIL_DRAFTS = process.env.NOCLICK_ENABLE_GMAIL_DRAFTS === 'true'
-const EXPOSE_ERROR_DETAILS = process.env.NOCLICK_EXPOSE_ERROR_DETAILS === 'true' || (!process.env.VERCEL && process.env.NODE_ENV !== 'production')
+const ENABLE_GMAIL_DRAFTS = envFlag('NOCLICK_ENABLE_GMAIL_DRAFTS')
+const EXPOSE_ERROR_DETAILS = envFlag('NOCLICK_EXPOSE_ERROR_DETAILS') || (!process.env.VERCEL && process.env.NODE_ENV !== 'production')
 const ADMIN_EMAILS = new Set(
   String(process.env.NOCLICK_ADMIN_EMAILS || '')
     .split(',')
@@ -988,10 +992,6 @@ function readinessItem(id, category, label, status, detail = '', action = '', op
 
 function envPresent(name) {
   return Boolean(String(process.env[name] || '').trim())
-}
-
-function envFlag(name) {
-  return ['1', 'true', 'yes', 'on'].includes(String(process.env[name] || '').trim().toLowerCase())
 }
 
 function envConfiguredItem(name, category, label, detail = '') {
