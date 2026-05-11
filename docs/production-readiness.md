@@ -56,6 +56,7 @@
    - Android: Android Studio에서 signed AAB를 만들고 Play Console에 업로드합니다.
    - Windows: 신뢰 가능한 코드 서명 인증서를 electron-builder에 연결합니다.
    - 공개 배포 전 다운로드 페이지와 GitHub release asset이 일치하는지 확인합니다.
+   - GitHub Actions `Build App Packages` 워크플로는 signing secret이 준비되면 APK/AAB/Windows 설치 파일과 checksum을 만들 수 있습니다.
 
 ## 검증 명령
 

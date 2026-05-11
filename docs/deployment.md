@@ -100,6 +100,31 @@ Optional audit secrets:
 
 Use an admin or paid audit account when `NOCLICK_REQUIRE_SUBSCRIPTION=true`. If subscription enforcement is disabled, the audit can create and delete a temporary account.
 
+## GitHub Actions App Packages
+
+The repository includes a manual `Build App Packages` workflow. It builds:
+
+- Android APK
+- Android AAB
+- Windows NSIS installer
+- SHA-256 checksum files
+
+Run it with `require_signing=false` only for internal unsigned package testing. For public release builds, keep `require_signing=true` and configure these GitHub repository secrets:
+
+Android:
+
+- `ANDROID_KEYSTORE_BASE64`: base64-encoded `.jks` or `.keystore` file
+- `ANDROID_KEYSTORE_PASSWORD`
+- `ANDROID_KEY_ALIAS`
+- `ANDROID_KEY_PASSWORD`
+
+Windows:
+
+- `WINDOWS_CSC_LINK`: electron-builder `CSC_LINK` value, such as a base64-encoded `.pfx`, secure URL, or runner-accessible path
+- `WINDOWS_CSC_KEY_PASSWORD`
+
+Set `create_github_release=true` only after reviewing the package artifacts. The workflow will attach the APK, AAB, Windows installer, blockmap, and checksum files to the selected GitHub release tag.
+
 ## Accounts
 
 The server provides:
