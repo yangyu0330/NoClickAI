@@ -1,6 +1,6 @@
 # NoClick AI
 
-NoClick AI is a chat-first automation assistant. The intended user experience is simple: the user types what they want done, the app creates an execution plan, asks for approval when an action is risky, and then runs connected tools such as Google Calendar, Gmail, Notion, Slack, and Telegram when provider credentials are configured. KakaoTalk uses a browser/Android share fallback for prepared share text.
+NoClick AI is a chat-first automation assistant. The intended user experience is simple: the user types what they want done, the app creates an execution plan, asks for approval when an action is risky, and then runs connected tools such as Google Calendar, Gmail, Notion, Slack, and Telegram when provider credentials are configured. Telegram and KakaoTalk also use browser/Android share fallbacks for prepared share text.
 
 The project shares one React app across:
 
@@ -31,6 +31,7 @@ Implemented:
 - Google OAuth connection for Calendar and Gmail
 - Gmail send support with explicit high-risk approval
 - In-app Gmail review drafts without requesting the restricted `gmail.compose` scope by default
+- Telegram prepared-share fallback without server credentials
 - KakaoTalk prepared-share fallback without server credentials
 - Stripe billing endpoints and webhook handling
 - Neon Postgres storage in production
@@ -43,7 +44,8 @@ Still required before public commercial launch:
 
 - Google OAuth public verification
 - Stripe live secret, recurring Price ID, and webhook secret
-- Production credentials for Notion, Slack, and Telegram
+- Production credentials for Notion and Slack
+- Optional Telegram Bot API credentials if direct Telegram bot delivery is required beyond the share fallback
 - Optional Kakao direct Message API credentials if direct Kakao API delivery is required beyond the share fallback
 - Publicly trusted Windows code-signing certificate
 - Store review/distribution for Android and Windows
@@ -84,7 +86,7 @@ Audit the production deployment:
 npm run audit:production
 ```
 
-The audit checks `/health`, the public review pages, the downloads page, authenticated readiness, a safe chat-to-KakaoTalk share-fallback automation run, high-risk Gmail approval gating without sending email, and account deletion cleanup using a temporary account.
+The audit checks `/health`, the public review pages, the downloads page, authenticated readiness, safe chat-to-Telegram and chat-to-KakaoTalk share-fallback automation runs, high-risk Gmail approval gating without sending email, and account deletion cleanup using a temporary account.
 
 When subscription enforcement is enabled, run the audit with an admin or paid account instead of a temporary free account:
 

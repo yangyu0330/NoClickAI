@@ -170,7 +170,7 @@ async function checkReadiness(baseUrl, account) {
   assert(response.ok, `/v1/readiness returned HTTP ${response.status}`)
   assert(body?.ok, '/v1/readiness did not return ok=true')
 
-  const requiredReadyIds = ['PRIVACY_POLICY_URL', 'TERMS_URL', 'DATA_DELETION_URL', 'kakao:configured']
+  const requiredReadyIds = ['PRIVACY_POLICY_URL', 'TERMS_URL', 'DATA_DELETION_URL', 'telegram:configured', 'kakao:configured']
   for (const id of requiredReadyIds) {
     const item = body.items?.find((entry) => entry.id === id)
     assert(item, `/v1/readiness is missing ${id}`)
@@ -215,6 +215,41 @@ async function checkKakaoShareAutomation(baseUrl, account) {
   assert(String(executedStep.result?.shareText || '').includes(verificationText), 'Kakao share text is missing the verification text')
 
   resultLine('PASS', 'Kakao chat automation', `run=${created.body.run.id}`)
+}
+
+async function checkTelegramShareAutomation(baseUrl, account) {
+  const headers = { Authorization: `Bearer ${account.token}` }
+  const verificationText = `NoClick AI audit ${crypto.randomUUID().slice(0, 8)}`
+  const prompt = `Prepare a Telegram share text for the team containing "${verificationText}". Do not send it; only prepare share text.`
+
+  const created = await fetchJson(`${baseUrl}/v1/chat`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ message: prompt }),
+  })
+  assert(created.response.status === 201, `/v1/chat Telegram request returned HTTP ${created.response.status}`)
+  assert(created.body?.run?.id, '/v1/chat Telegram request did not return a run id')
+
+  const plannedStep = created.body.run.steps?.find((step) => step.provider === 'telegram')
+  assert(plannedStep, 'Telegram prompt did not produce a Telegram step')
+  assert(plannedStep.action === 'telegram.prepare_message', `Telegram step used unexpected action ${plannedStep.action}`)
+  assert(plannedStep.status === 'ready', `Telegram step should be ready, got ${plannedStep.status}`)
+
+  const executed = await fetchJson(`${baseUrl}/v1/runs/${created.body.run.id}/execute`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ confirmHighRisk: true }),
+  })
+  assert(executed.response.ok, `/v1/runs/:id/execute Telegram request returned HTTP ${executed.response.status}`)
+  assert(executed.body?.run?.status === 'done', `Telegram audit run status is ${executed.body?.run?.status}`)
+
+  const executedStep = executed.body.run.steps?.find((step) => step.provider === 'telegram')
+  assert(executedStep?.status === 'done', `Telegram executed step status is ${executedStep?.status}`)
+  assert(executedStep.result?.ok === true, 'Telegram share fallback did not return ok=true')
+  assert(executedStep.result?.code === 'share_prepared', `Telegram share fallback returned ${executedStep.result?.code}`)
+  assert(String(executedStep.result?.shareText || '').includes(verificationText), 'Telegram share text is missing the verification text')
+
+  resultLine('PASS', 'Telegram chat automation', `run=${created.body.run.id}`)
 }
 
 async function checkHighRiskApprovalGate(baseUrl, account) {
@@ -278,6 +313,7 @@ async function main() {
       account = { ...(await createAuditAccount(baseUrl)), temporary: true }
     }
     await checkReadiness(baseUrl, account)
+    await checkTelegramShareAutomation(baseUrl, account)
     await checkKakaoShareAutomation(baseUrl, account)
     await checkHighRiskApprovalGate(baseUrl, account)
   } finally {

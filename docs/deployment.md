@@ -29,6 +29,7 @@ SLACK_CLIENT_ID=...
 SLACK_CLIENT_SECRET=...
 SLACK_REDIRECT_URI=https://api.your-domain.example/v1/connectors/slack/callback
 SLACK_DEFAULT_CHANNEL_ID=...
+# Optional: Telegram share fallback works without these. Set them only for direct bot delivery.
 TELEGRAM_BOT_TOKEN=...
 TELEGRAM_DEFAULT_CHAT_ID=...
 # Optional: KakaoTalk share fallback works without these. Set them only for direct Kakao API experiments.
@@ -106,7 +107,7 @@ The server provides:
 - `GET /v1/connectors/:provider/callback`
 - `POST /v1/connectors/:provider/disconnect`
 
-Google Calendar and Gmail share the Google OAuth connection. Telegram uses a bot token and default chat ID. KakaoTalk falls back to Android/share UI when the Message API cannot directly target a chat.
+Google Calendar and Gmail share the Google OAuth connection. Telegram and KakaoTalk can prepare share text for Android/browser share UI without server credentials. Telegram uses a bot token and default chat ID only when direct bot delivery is required.
 
 ## Stripe Billing
 

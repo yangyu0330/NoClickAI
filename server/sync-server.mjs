@@ -50,6 +50,7 @@ const STORAGE_TARGET = DATABASE_URL ? `postgres:${STORE_TABLE}/${STORE_ID}` : DA
 const GMAIL_ACTIONS = ENABLE_GMAIL_DRAFTS
   ? ['gmail.prepare_message', 'gmail.create_draft', 'gmail.send_message']
   : ['gmail.prepare_message', 'gmail.send_message']
+const TELEGRAM_ACTIONS = ['telegram.prepare_message', 'telegram.send_message']
 const RELEASE_TAG = process.env.NOCLICK_RELEASE_TAG || 'v0.1.0-internal.1'
 const RELEASE_BASE_URL = `https://github.com/yangyu0330/NoClickAI/releases/download/${RELEASE_TAG}`
 const RELEASE_PAGE_URL = `https://github.com/yangyu0330/NoClickAI/releases/tag/${RELEASE_TAG}`
@@ -146,9 +147,9 @@ const CONNECTOR_DEFINITIONS = [
     id: 'telegram',
     tokenProvider: 'telegram',
     name: 'Telegram',
-    type: 'bot',
-    actions: ['telegram.send_message'],
-    configured: () => Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_DEFAULT_CHAT_ID),
+    type: 'bot_or_share',
+    actions: TELEGRAM_ACTIONS,
+    configured: () => true,
   },
   {
     id: 'kakao',
@@ -942,7 +943,7 @@ function connectorStatuses(store, userId) {
     const providerKey = oauthProviderFromConnector(definition.id)
     const oauthProvider = OAUTH_PROVIDERS[providerKey]
     const missingConfig =
-      definition.type === 'bot' || definition.type === 'share'
+      definition.type === 'bot' || definition.type === 'bot_or_share' || definition.type === 'share'
         ? []
         : [
             oauthProvider?.clientId ? '' : `${providerKey.toUpperCase()}_CLIENT_ID`,
@@ -950,7 +951,7 @@ function connectorStatuses(store, userId) {
           ].filter(Boolean)
     const connected =
       definition.id === 'telegram'
-        ? definition.configured()
+        ? Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_DEFAULT_CHAT_ID)
         : Boolean(getRawConnection(store, userId, definition.tokenProvider))
     return {
       id: definition.id,
@@ -1139,6 +1140,28 @@ function connectorReadinessItems(store, userId) {
       ]
     }
 
+    if (connector.type === 'bot_or_share') {
+      const botReady = envPresent('TELEGRAM_BOT_TOKEN') && envPresent('TELEGRAM_DEFAULT_CHAT_ID')
+      return [
+        readinessItem(
+          `${connector.id}:configured`,
+          'connectors',
+          `${connector.name} share fallback`,
+          'ready',
+          `${connector.name} can prepare share text for browser and Android sharing without server credentials.`,
+          '',
+        ),
+        readinessItem(
+          `${connector.id}:bot`,
+          'connectors',
+          `${connector.name} bot delivery`,
+          botReady ? 'ready' : 'warning',
+          botReady ? 'Telegram Bot API delivery is configured.' : 'Telegram Bot API delivery is not configured; share fallback remains available.',
+          botReady ? '' : 'Set TELEGRAM_BOT_TOKEN and TELEGRAM_DEFAULT_CHAT_ID only when direct bot delivery is required.',
+        ),
+      ]
+    }
+
     const items = [
       readinessItem(
         `${connector.id}:configured`,
@@ -1163,19 +1186,6 @@ function connectorReadinessItems(store, userId) {
           connector.connected ? 'ready' : 'warning',
           connector.connected ? `${connector.name} is connected for this user.` : `${connector.name} OAuth is not connected for this user.`,
           connector.connected ? '' : `Open the app and connect ${connector.name}.`,
-        ),
-      )
-    }
-
-    if (connector.id === 'telegram') {
-      items.push(
-        readinessItem(
-          'telegram:chat',
-          'connectors',
-          'Telegram default chat',
-          envPresent('TELEGRAM_DEFAULT_CHAT_ID') ? 'ready' : 'missing',
-          envPresent('TELEGRAM_DEFAULT_CHAT_ID') ? 'Default chat ID is configured.' : 'TELEGRAM_DEFAULT_CHAT_ID is missing.',
-          envPresent('TELEGRAM_DEFAULT_CHAT_ID') ? '' : 'Set TELEGRAM_DEFAULT_CHAT_ID after adding the bot to the target chat.',
         ),
       )
     }
@@ -1606,6 +1616,7 @@ const runSchema = {
               'gmail.send_message',
               'notion.create_page',
               'slack.post_message',
+              'telegram.prepare_message',
               'telegram.send_message',
               'kakao.share_text',
             ],
@@ -1701,6 +1712,10 @@ function wantsKakaoShare(prompt) {
   return /kakao|kakaotalk|\uCE74\uCE74\uC624|\uCE74\uD1A1|\uCE74\uCE74\uC624\uD1A1/i.test(String(prompt || ''))
 }
 
+function wantsTelegramShare(prompt) {
+  return /telegram|\uD154\uB808\uADF8\uB7A8/i.test(String(prompt || ''))
+}
+
 function extractFirstEmail(value) {
   return String(value || '').match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] || ''
 }
@@ -1717,7 +1732,7 @@ function extractPromptTail(prompt, label) {
 
 function normalizeActionRisk(action, risk) {
   if (risk === 'blocked') return risk
-  return action === 'gmail.send_message' ? 'high' : risk
+  return ['gmail.send_message', 'slack.post_message', 'telegram.send_message'].includes(action) ? 'high' : risk
 }
 
 function sanitizeStep(step, index, prompt = '') {
@@ -1939,9 +1954,50 @@ function createKakaoShareRun(userId, prompt) {
   }
 }
 
+function createTelegramShareRun(userId, prompt) {
+  const normalized = String(prompt || '').trim()
+  const steps = [
+    sanitizeStep(
+      {
+        title: 'Telegram 공유 텍스트 준비',
+        provider: 'telegram',
+        action: 'telegram.prepare_message',
+        detail: 'Telegram Bot API 전송 대신 Android 공유창 또는 클립보드 fallback으로 보낼 텍스트를 준비합니다.',
+        preview: normalized,
+        risk: 'low',
+        input: {
+          title: '',
+          description: '',
+          when: '',
+          to: '',
+          subject: '',
+          body: normalized,
+          channel: '',
+          parentPageId: '',
+          chatId: '',
+        },
+      },
+      0,
+      normalized,
+    ),
+  ]
+
+  return {
+    id: `run_${crypto.randomBytes(10).toString('hex')}`,
+    userId,
+    prompt: normalized,
+    status: 'ready',
+    assistantMessage: 'Telegram 공유용 텍스트를 준비했습니다. 실행 후 공유 버튼으로 Android 공유창이나 클립보드 fallback을 사용할 수 있습니다.',
+    steps,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }
+}
+
 async function createAiRun(user, prompt) {
   const userId = user.id
   if (wantsKakaoShare(prompt)) return createKakaoShareRun(userId, prompt)
+  if (wantsTelegramShare(prompt)) return createTelegramShareRun(userId, prompt)
   if (isSimpleGmailSend(prompt)) return createGmailSendRun(userId, prompt)
   if (!OPENAI_API_KEY) return createFallbackRun(userId, prompt)
 
@@ -2392,7 +2448,7 @@ async function executeSlackMessage(store, run, step) {
 async function executeTelegramMessage(_store, run, step) {
   const botToken = process.env.TELEGRAM_BOT_TOKEN
   const chatId = step.input.chatId || process.env.TELEGRAM_DEFAULT_CHAT_ID
-  if (!botToken || !chatId) return executionFailure('telegram_not_configured', 'Telegram Bot Token과 Chat ID가 필요합니다.')
+  if (!botToken || !chatId) return executeTelegramPrepared(_store, run, step)
 
   const result = await fetchJson(`https://api.telegram.org/bot${botToken}/sendMessage`, {
     method: 'POST',
@@ -2403,6 +2459,15 @@ async function executeTelegramMessage(_store, run, step) {
     }),
   })
   return { ok: true, message: 'Telegram 메시지가 전송되었습니다.', externalId: result.result?.message_id }
+}
+
+async function executeTelegramPrepared(_store, run, step) {
+  return {
+    ok: true,
+    code: 'share_prepared',
+    message: 'Telegram 공유용 텍스트가 NoClick AI 안에 준비되었습니다. 공유 버튼으로 전송하세요.',
+    shareText: step.input.body || step.preview || run.prompt,
+  }
 }
 
 async function executeKakaoShare(_store, run, step) {
@@ -2472,6 +2537,7 @@ async function executeStep(store, run, step) {
   if (step.provider === 'gmail') return executeGmailPrepared(store, run, step)
   if (step.provider === 'notion') return executeNotionPage(store, run, step)
   if (step.provider === 'slack') return executeSlackMessage(store, run, step)
+  if (step.provider === 'telegram' && step.action === 'telegram.prepare_message') return executeTelegramPrepared(store, run, step)
   if (step.provider === 'telegram') return executeTelegramMessage(store, run, step)
   if (step.provider === 'kakao') return executeKakaoShare(store, run, step)
   return executionFailure('unsupported_provider', '지원하지 않는 커넥터입니다.')
