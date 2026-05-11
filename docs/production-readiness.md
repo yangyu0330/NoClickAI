@@ -65,9 +65,9 @@
    - 공개 배포 전 다운로드 페이지와 GitHub release asset이 일치하는지 확인합니다.
    - GitHub Actions `Build App Packages` 워크플로는 signing secret이 준비되면 APK/AAB/Windows 설치 파일과 checksum을 만들 수 있습니다.
    - signed AAB 검증/업로드 후 `NOCLICK_ANDROID_RELEASE_SIGNED=true`를 설정합니다.
-   - `NOCLICK_ANDROID_RELEASE_EVIDENCE`에는 Play Console 릴리스/검증 표식을 설정합니다.
+   - `NOCLICK_ANDROID_RELEASE_EVIDENCE`에는 `ANDROID-SIGNING-EVIDENCE.txt`와 Play Console 릴리스/검증 표식을 바탕으로 한 비밀이 아닌 표식을 설정합니다.
    - Windows installer Authenticode 검증 후 `NOCLICK_WINDOWS_CODE_SIGNED=true`를 설정합니다.
-   - `NOCLICK_WINDOWS_CODE_SIGNING_EVIDENCE`에는 signer/thumbprint 검증 표식을 설정합니다.
+   - `NOCLICK_WINDOWS_CODE_SIGNING_EVIDENCE`에는 `WINDOWS-SIGNING-EVIDENCE.txt`의 signer/thumbprint 검증 표식을 설정합니다.
 
 ## 검증 명령
 

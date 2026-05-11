@@ -113,8 +113,16 @@ jobs:
       - name: Verify Android release signatures
         shell: bash
         run: |
+          mkdir -p artifacts/android
           if [ "${{ inputs.require_signing }}" != "true" ]; then
-            echo "Skipping Android signature verification for unsigned internal package testing."
+            {
+              echo "NoClick AI Android signing evidence"
+              echo "Release tag: ${{ inputs.release_tag }}"
+              echo "Commit: $GITHUB_SHA"
+              echo "Signing required: false"
+              echo "Status: skipped for unsigned internal package testing"
+              echo "Generated at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            } > artifacts/android/ANDROID-SIGNING-EVIDENCE.txt
             exit 0
           fi
 
@@ -126,8 +134,22 @@ jobs:
           apksigner="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
           test -x "$apksigner" || { echo "Android apksigner was not found"; exit 1; }
 
-          "$apksigner" verify --verbose --print-certs "$apk_path"
-          jarsigner -verify "$aab_path"
+          evidence="artifacts/android/ANDROID-SIGNING-EVIDENCE.txt"
+          {
+            echo "NoClick AI Android signing evidence"
+            echo "Release tag: ${{ inputs.release_tag }}"
+            echo "Commit: $GITHUB_SHA"
+            echo "Signing required: true"
+            echo "Generated at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo
+            echo "APK: $(basename "$apk_path")"
+          } > "$evidence"
+          "$apksigner" verify --verbose --print-certs "$apk_path" | tee -a "$evidence"
+          {
+            echo
+            echo "AAB: $(basename "$aab_path")"
+          } >> "$evidence"
+          jarsigner -verify "$aab_path" | tee -a "$evidence"
 
       - name: Stage Android artifacts
         shell: bash
@@ -212,6 +234,19 @@ jobs:
         run: |
           if ('${{ inputs.require_signing }}' -ne 'true') {
             Write-Host 'Skipping Windows Authenticode verification for unsigned internal package testing.'
+            @(
+              'NoClick AI Windows signing evidence'
+              'Release tag: ${{ inputs.release_tag }}'
+              "Commit: $env:GITHUB_SHA"
+              'Signing required: false'
+              'Status: skipped for unsigned internal package testing'
+              "Generated at: $((Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ'))"
+            ) | Set-Content artifacts/windows/WINDOWS-SIGNING-EVIDENCE.txt
+            Get-ChildItem artifacts/windows/* |
+              Where-Object { $_.Name -notlike 'SHA256SUMS-*' } |
+              Get-FileHash -Algorithm SHA256 |
+              ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } |
+              Set-Content artifacts/windows/SHA256SUMS-windows.txt
             exit 0
           }
 
@@ -223,6 +258,26 @@ jobs:
             throw "Windows installer signature status is $($signature.Status): $($signature.StatusMessage)"
           }
           Write-Host "Windows installer signature is valid: $($signature.SignerCertificate.Subject)"
+
+          @(
+            'NoClick AI Windows signing evidence'
+            'Release tag: ${{ inputs.release_tag }}'
+            "Commit: $env:GITHUB_SHA"
+            'Signing required: true'
+            "Generated at: $((Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ'))"
+            ''
+            "Installer: $($installer.Name)"
+            "Signature status: $($signature.Status)"
+            "Signer subject: $($signature.SignerCertificate.Subject)"
+            "Signer thumbprint: $($signature.SignerCertificate.Thumbprint)"
+            "Certificate not before: $($signature.SignerCertificate.NotBefore.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ'))"
+            "Certificate not after: $($signature.SignerCertificate.NotAfter.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ'))"
+          ) | Set-Content artifacts/windows/WINDOWS-SIGNING-EVIDENCE.txt
+          Get-ChildItem artifacts/windows/* |
+            Where-Object { $_.Name -notlike 'SHA256SUMS-*' } |
+            Get-FileHash -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } |
+            Set-Content artifacts/windows/SHA256SUMS-windows.txt
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v6
