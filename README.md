@@ -91,6 +91,14 @@ npm run audit:production
 
 The audit checks `/health`, production security headers, the deployed commit reported by `/health`, the root app shell with JS/CSS/PWA assets, service-worker API-cache exclusions, the public review pages, the downloads page, static traversal guarding, GitHub release assets, authenticated readiness, billing API behavior, Stripe webhook signature guarding, subscription access gating when enabled, safe chat-to-Notion, chat-to-Slack, chat-to-Telegram, and chat-to-KakaoTalk prepared-content automation runs, high-risk Gmail approval gating without sending email, and account deletion cleanup using a temporary account.
 
+For a shorter operator view of the current public-launch blockers, run:
+
+```bash
+npm run launch:status
+```
+
+`launch:status` checks `/health`, creates a temporary account when audit credentials are not supplied, reads `/v1/readiness`, deletes the temporary account, and prints the exact launch-blocking items that still need provider-console or signing work. It exits nonzero while any launch blocker remains.
+
 Run the same audit concurrently to catch account/session persistence regressions under overlapping production requests:
 
 ```bash

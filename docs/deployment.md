@@ -118,6 +118,14 @@ For the final public-launch gate, run the same audit in strict mode:
 npm run audit:production -- --strict-launch
 ```
 
+For a concise operator checklist before re-running the full strict gate:
+
+```bash
+npm run launch:status
+```
+
+This command reads the deployed `/health` and authenticated `/v1/readiness` endpoints, using `NOCLICK_AUDIT_EMAIL`/`NOCLICK_AUDIT_PASSWORD` when supplied or a temporary self-deleting account otherwise. It exits with a failure while launch-blocking readiness items remain and prints the next strict audit command to run after the blockers are resolved.
+
 Or set this in GitHub Actions when running `CI` or `Deploy Production` manually:
 
 - `strict_launch=true`
