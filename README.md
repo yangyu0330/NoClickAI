@@ -79,10 +79,17 @@ Validate before committing:
 ```bash
 npm run lint
 npm run build
+npm run test:billing
 npm run test:e2e
 ```
 
-The GitHub Actions CI workflow runs `npm ci`, server syntax checks, audit-script syntax checks, high-severity dependency audit, lint, build, and a Playwright smoke test on pushes to `main` and pull requests.
+The GitHub Actions CI workflow runs `npm ci`, server syntax checks, audit-script syntax checks, high-severity dependency audit, lint, build, local billing webhook smoke, and a Playwright smoke test on pushes to `main` and pull requests.
+
+The local billing smoke starts an isolated sync server with subscription enforcement enabled, rejects an unsigned Stripe webhook, applies a signed `checkout.session.completed` event, verifies the account becomes `pro`, applies a signed `customer.subscription.deleted` event, and verifies paid routes are blocked again:
+
+```bash
+npm run test:billing
+```
 
 Run the same browser smoke against the deployed app:
 

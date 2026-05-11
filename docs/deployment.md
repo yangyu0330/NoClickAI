@@ -236,6 +236,14 @@ Listen only to required events:
 
 The webhook verifies `Stripe-Signature` against `STRIPE_WEBHOOK_SECRET` using the raw request body.
 
+Before enabling paid access in production, run the local billing smoke test. It uses an isolated local data directory and does not call Stripe's API:
+
+```bash
+npm run test:billing
+```
+
+The smoke test verifies subscription enforcement, unsigned webhook rejection, signed `checkout.session.completed` processing, duplicate webhook idempotency, signed `customer.subscription.deleted` processing, and re-blocking of canceled accounts.
+
 ## Android Release Signing
 
 Create a release keystore:

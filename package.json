@@ -14,6 +14,7 @@
     "launch:status": "node scripts/launch-status.mjs",
     "audit:production": "node scripts/production-audit.mjs",
     "audit:production:parallel": "node scripts/production-parallel-audit.mjs",
+    "test:billing": "node scripts/billing-webhook-smoke.mjs",
     "dev:full": "concurrently -n web,sync \"npm:dev:web\" \"npm:sync:server\"",
     "build": "tsc -b && vite build",
     "lint": "eslint .",

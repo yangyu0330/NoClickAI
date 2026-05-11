@@ -64,11 +64,17 @@ jobs:
       - name: Check production E2E script syntax
         run: node --check scripts/production-e2e.mjs
 
+      - name: Check billing smoke syntax
+        run: node --check scripts/billing-webhook-smoke.mjs
+
       - name: Dependency audit
         run: npm audit --audit-level=high
 
       - name: Lint
         run: npm run lint
+
+      - name: Billing webhook smoke
+        run: npm run test:billing
 
       - name: Build
         run: npm run build
