@@ -14,6 +14,7 @@ function parseArgs(argv) {
     email: process.env.NOCLICK_AUDIT_EMAIL || '',
     password: process.env.NOCLICK_AUDIT_PASSWORD || '',
     token: process.env.NOCLICK_AUDIT_TOKEN || '',
+    expectedCommit: process.env.NOCLICK_AUDIT_EXPECTED_COMMIT || '',
     strictLaunch: parseBoolean(process.env.NOCLICK_AUDIT_STRICT_LAUNCH),
   }
 
@@ -53,6 +54,15 @@ function parseArgs(argv) {
     }
     if (arg.startsWith('--token=')) {
       args.token = arg.slice('--token='.length)
+      continue
+    }
+    if (arg === '--expected-commit') {
+      args.expectedCommit = argv[index + 1] || args.expectedCommit
+      index += 1
+      continue
+    }
+    if (arg.startsWith('--expected-commit=')) {
+      args.expectedCommit = arg.slice('--expected-commit='.length)
       continue
     }
     if (arg === '--strict-launch') {
@@ -105,6 +115,19 @@ function assert(condition, message) {
 function resultLine(status, label, detail = '') {
   const suffix = detail ? ` - ${detail}` : ''
   console.log(`${status.padEnd(7)} ${label}${suffix}`)
+}
+
+function commitMatches(actual, expected) {
+  if (!actual || !expected) return false
+  return actual === expected || actual.startsWith(expected) || expected.startsWith(actual)
+}
+
+function checkExpectedCommit(health, expectedCommit) {
+  if (!expectedCommit) return
+  const actualCommit = String(health.commitSha || '').trim()
+  assert(actualCommit, '/health did not return commitSha')
+  assert(commitMatches(actualCommit, expectedCommit), `/health commitSha is ${actualCommit}; expected ${expectedCommit}`)
+  resultLine('PASS', 'deployment commit', actualCommit)
 }
 
 async function checkPublicPage(baseUrl, path, requiredText) {
@@ -508,7 +531,7 @@ async function checkHighRiskApprovalGate(baseUrl, account) {
 }
 
 async function main() {
-  const { baseUrl, email, password, token, strictLaunch } = parseArgs(process.argv)
+  const { baseUrl, email, password, token, expectedCommit, strictLaunch } = parseArgs(process.argv)
   let account = null
 
   console.log(`NoClick AI production audit: ${baseUrl}`)
@@ -521,6 +544,7 @@ async function main() {
     assert(health.response.ok && health.body?.ok, `/health returned HTTP ${health.response.status}`)
     assert(health.body.auth && health.body.chat && health.body.connectors && health.body.billing, '/health is missing expected service flags')
     resultLine('PASS', '/health', `model=${health.body.model}, storage=${health.body.storage}`)
+    checkExpectedCommit(health.body, expectedCommit)
 
     await checkPublicPage(baseUrl, '/privacy', ['Privacy Policy', 'Google User Data', 'Limited Use', '/data-deletion'])
     await checkPublicPage(baseUrl, '/terms', ['Terms of Service', 'High-Risk Actions'])

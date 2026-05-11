@@ -7,6 +7,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import crypto from 'node:crypto'
 import { neon } from '@neondatabase/serverless'
+import { BUILD_COMMIT_SHA } from './build-meta.generated.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const DATA_DIR = process.env.NOCLICK_SYNC_DATA_DIR || (process.env.VERCEL ? join(tmpdir(), 'noclick-data') : join(__dirname, 'data'))
@@ -21,6 +22,7 @@ const DATABASE_URL = process.env.DATABASE_URL || process.env.POSTGRES_URL || ''
 const ALLOWED_ORIGIN = process.env.NOCLICK_ALLOWED_ORIGIN || '*'
 const PUBLIC_APP_URL = process.env.NOCLICK_PUBLIC_APP_URL || `http://${HOST}:${PORT}`
 const SERVER_BASE_URL = process.env.NOCLICK_SERVER_BASE_URL || `http://${HOST}:${PORT}`
+const APP_COMMIT_SHA = process.env.NOCLICK_COMMIT_SHA || process.env.VERCEL_GIT_COMMIT_SHA || process.env.GITHUB_SHA || BUILD_COMMIT_SHA || ''
 const TLS_KEY_PATH = process.env.NOCLICK_TLS_KEY_PATH || ''
 const TLS_CERT_PATH = process.env.NOCLICK_TLS_CERT_PATH || ''
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || ''
@@ -1370,6 +1372,7 @@ async function productionReadinessReport(store, userId) {
     generatedAt: new Date().toISOString(),
     publicAppUrl: PUBLIC_APP_URL,
     serverBaseUrl: SERVER_BASE_URL,
+    commitSha: APP_COMMIT_SHA,
     release: {
       tag: RELEASE_TAG,
       pageUrl: RELEASE_PAGE_URL,
@@ -3002,6 +3005,7 @@ export async function handleRequest(request, response) {
       stripeWebhookConfigured: Boolean(STRIPE_WEBHOOK_SECRET),
       requireSubscription: REQUIRE_SUBSCRIPTION,
       storage: STORAGE_TARGET,
+      commitSha: APP_COMMIT_SHA,
       time: new Date().toISOString(),
     })
     return

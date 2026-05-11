@@ -103,6 +103,8 @@ Optional audit secrets:
 
 Use an admin or paid audit account when `NOCLICK_REQUIRE_SUBSCRIPTION=true`. If subscription enforcement is disabled, the audit can create and delete a temporary account.
 
+The workflow writes the GitHub Actions commit SHA into `server/build-meta.generated.mjs` before building. `/health` returns that value as `commitSha`, and the production audit receives `NOCLICK_AUDIT_EXPECTED_COMMIT=${{ github.sha }}` so the deployed server must report the expected commit.
+
 For the final public-launch gate, run the same audit in strict mode:
 
 ```bash

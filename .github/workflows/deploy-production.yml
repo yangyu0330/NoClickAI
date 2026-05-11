@@ -78,6 +78,13 @@ jobs:
             exit 1
           fi
 
+      - name: Write deployment metadata
+        shell: bash
+        run: |
+          cat > server/build-meta.generated.mjs <<EOF
+          export const BUILD_COMMIT_SHA = '${{ github.sha }}'
+          EOF
+
       - name: Lint
         run: npm run lint
 
@@ -109,6 +116,7 @@ jobs:
           NOCLICK_AUDIT_EMAIL: ${{ secrets.NOCLICK_AUDIT_EMAIL }}
           NOCLICK_AUDIT_PASSWORD: ${{ secrets.NOCLICK_AUDIT_PASSWORD }}
           NOCLICK_AUDIT_TOKEN: ${{ secrets.NOCLICK_AUDIT_TOKEN }}
+          NOCLICK_AUDIT_EXPECTED_COMMIT: ${{ github.sha }}
           NOCLICK_AUDIT_STRICT_LAUNCH: ${{ inputs.strict_launch }}
 
       - name: Check production error logs
