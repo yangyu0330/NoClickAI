@@ -4,6 +4,50 @@
   background: #f8fafc;
 }
 
+.legal-shell {
+  min-height: 100svh;
+  padding: 32px 16px;
+  color: var(--ink);
+  background: #f8fafc;
+}
+
+.legal-panel {
+  width: min(860px, 100%);
+  margin: 0 auto;
+  padding: 28px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 12px 32px rgba(17, 24, 39, 0.06);
+}
+
+.legal-back {
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.legal-panel h1 {
+  margin: 18px 0 4px;
+  font-size: 32px;
+}
+
+.legal-panel h2 {
+  margin: 24px 0 8px;
+  font-size: 18px;
+}
+
+.legal-panel p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.legal-date {
+  font-size: 13px;
+}
+
 .topbar,
 .brand,
 .top-actions,
@@ -89,6 +133,20 @@
   width: min(1440px, 100%);
   margin: 0 auto;
   padding: 16px;
+}
+
+.app-footer {
+  display: flex;
+  justify-content: center;
+  gap: 18px;
+  padding: 0 16px 22px;
+}
+
+.app-footer a {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
 }
 
 .chat-panel,

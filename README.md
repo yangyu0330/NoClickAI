@@ -92,6 +92,11 @@ API:
 
 Chat, Runs, Connectors, Sync 요청에는 로그인 세션 토큰 또는 `Authorization: Bearer <NOCLICK_SYNC_TOKEN>`이 필요합니다. 서버 데이터는 기본적으로 `server/data/workspaces.json`에 저장되며, 이 폴더는 Git에 포함하지 않습니다.
 
+Public review pages:
+
+- Privacy Policy: `/privacy`
+- Terms of Service: `/terms`
+
 `POST /v1/plan`은 추가로 `X-OpenAI-Key` 헤더를 사용합니다. 이 값은 서버에 저장하지 않습니다.
 
 기본 AI 모델은 `gpt-5-nano`입니다. OpenAI 공식 가격표 기준 텍스트 모델 중 가장 저렴한 GPT-5 계열이며, NoClick AI의 짧은 한국어 JSON 실행계획 생성에는 비용 대비 가장 적합한 기본값입니다. 필요하면 `NOCLICK_OPENAI_MODEL` 환경변수로 교체할 수 있습니다.

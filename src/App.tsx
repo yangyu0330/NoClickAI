@@ -195,6 +195,8 @@ const STATUS_LABEL: Record<StepStatus, string> = {
   blocked: '차단',
 }
 
+const LEGAL_UPDATED_AT = '2026-05-11'
+
 function readJsonStorage<T>(key: string, fallback: T): T {
   try {
     const raw = window.localStorage.getItem(key)
@@ -269,7 +271,76 @@ function readinessLabel(status: ReadinessStatus) {
   return '수동'
 }
 
-function App() {
+function LegalPage({ kind }: { kind: 'privacy' | 'terms' }) {
+  const isPrivacy = kind === 'privacy'
+  return (
+    <main className="legal-shell">
+      <section className="legal-panel">
+        <a className="legal-back" href="/">
+          NoClick AI
+        </a>
+        <h1>{isPrivacy ? 'Privacy Policy' : 'Terms of Service'}</h1>
+        <p className="legal-date">Last updated: {LEGAL_UPDATED_AT}</p>
+        {isPrivacy ? (
+          <>
+            <h2>Overview</h2>
+            <p>
+              NoClick AI is an automation assistant that turns user instructions into reviewed actions across connected services such as Google Calendar and Gmail.
+            </p>
+            <h2>Information We Process</h2>
+            <p>
+              We process account email addresses, session tokens, automation prompts, run history, audit logs, connector status, and OAuth tokens needed to perform approved actions.
+            </p>
+            <h2>Google User Data</h2>
+            <p>
+              When you connect Google, NoClick AI requests access only for the features shown in the app: creating Calendar events, creating Gmail drafts, sending approved Gmail messages, and reading the Google account email used for the connection.
+            </p>
+            <p>
+              Google OAuth tokens are encrypted before storage. Google user data is used only to provide the requested automation features and is not sold or used for advertising.
+            </p>
+            <h2>Data Sharing</h2>
+            <p>
+              We send data to connected services only when needed to complete user-approved actions. We also use infrastructure providers such as Vercel, Neon Postgres, OpenAI, and Stripe when those services are configured for hosting, storage, AI planning, and billing.
+            </p>
+            <h2>Retention and Deletion</h2>
+            <p>
+              Automation history and audit logs are retained to help users review approvals and external actions. Users can disconnect providers from the app, and administrators can delete stored account data on request.
+            </p>
+            <h2>Contact</h2>
+            <p>For privacy requests, contact the NoClick AI operator at the support address listed in the Google OAuth consent screen.</p>
+          </>
+        ) : (
+          <>
+            <h2>Use of the Service</h2>
+            <p>
+              NoClick AI helps users plan, approve, and execute automations. You are responsible for reviewing each action before approving execution, especially messages, emails, calendar changes, and third-party service updates.
+            </p>
+            <h2>Connected Accounts</h2>
+            <p>
+              You must only connect accounts that you own or are authorized to use. Disconnecting a provider stops new actions from using that provider.
+            </p>
+            <h2>High-Risk Actions</h2>
+            <p>
+              External sends and similar high-risk actions require approval and confirmation. You remain responsible for the content and destination of any message or email you approve.
+            </p>
+            <h2>Availability</h2>
+            <p>
+              The service depends on third-party APIs and may be interrupted by provider outages, revoked permissions, rate limits, billing configuration, or policy restrictions.
+            </p>
+            <h2>Limitations</h2>
+            <p>
+              NoClick AI is provided as an automation tool without a guarantee that every generated plan is correct. Review plans and outputs before execution.
+            </p>
+            <h2>Contact</h2>
+            <p>For service questions, contact the NoClick AI operator at the support address listed in the Google OAuth consent screen.</p>
+          </>
+        )}
+      </section>
+    </main>
+  )
+}
+
+function AppShell() {
   const [endpoint, setEndpoint] = useState(() => window.localStorage.getItem(STORAGE_KEYS.endpoint) || DEFAULT_ENDPOINT)
   const [authSession, setAuthSession] = useState<AuthSession | null>(() =>
     readJsonStorage<AuthSession | null>(STORAGE_KEYS.authSession, null),
@@ -899,8 +970,20 @@ function App() {
           </section>
         </aside>
       </section>
+      <footer className="app-footer">
+        <a href="/privacy">Privacy Policy</a>
+        <a href="/terms">Terms of Service</a>
+      </footer>
     </main>
   )
+}
+
+function App() {
+  const route = window.location.pathname.replace(/\/+$/, '') || '/'
+
+  if (route === '/privacy') return <LegalPage kind="privacy" />
+  if (route === '/terms') return <LegalPage kind="terms" />
+  return <AppShell />
 }
 
 export default App

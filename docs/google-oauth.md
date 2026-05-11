@@ -11,7 +11,11 @@ NoClickAI can open the Google consent screen from the app, but Google still requ
    - Gmail API
 4. Configure OAuth consent screen in Testing mode.
 5. Add your own Google account as a test user.
-6. Create OAuth client:
+6. Add app links:
+   - Application home page: `https://noclickai-zeta.vercel.app`
+   - Privacy policy: `https://noclickai-zeta.vercel.app/privacy`
+   - Terms of service: `https://noclickai-zeta.vercel.app/terms`
+7. Create OAuth client:
    - Application type: Web application
    - Authorized redirect URI:
 
