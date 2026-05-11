@@ -103,6 +103,7 @@ gh secret set VERCEL_TOKEN --repo yangyu0330/NoClickAI --body $env:VERCEL_TOKEN
 `npm run audit:production`은 다음을 확인합니다.
 
 - `/health`
+- `/health.commitSha`와 현재 git `HEAD`의 배포 일치 여부
 - `/privacy`, `/terms`, `/downloads`, `/data-deletion`
 - 정적 파일 경로 traversal 차단
 - 인증된 `/v1/readiness`

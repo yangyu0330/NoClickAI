@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { execFileSync } from 'node:child_process'
 import crypto from 'node:crypto'
 
 const DEFAULT_BASE_URL = 'https://noclickai-zeta.vercel.app'
@@ -122,12 +123,62 @@ function commitMatches(actual, expected) {
   return actual === expected || actual.startsWith(expected) || expected.startsWith(actual)
 }
 
-function checkExpectedCommit(health, expectedCommit) {
-  if (!expectedCommit) return
+function runGit(args) {
+  try {
+    return execFileSync('git', args, {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim()
+  } catch {
+    return ''
+  }
+}
+
+function localGitHead() {
+  return runGit(['rev-parse', 'HEAD'])
+}
+
+function localGitStatus() {
+  return runGit(['status', '--porcelain'])
+}
+
+function checkDeploymentCommit(health, { expectedCommit, strictLaunch }) {
   const actualCommit = String(health.commitSha || '').trim()
-  assert(actualCommit, '/health did not return commitSha')
-  assert(commitMatches(actualCommit, expectedCommit), `/health commitSha is ${actualCommit}; expected ${expectedCommit}`)
-  resultLine('PASS', 'deployment commit', actualCommit)
+
+  if (expectedCommit) {
+    assert(actualCommit, '/health did not return commitSha')
+    assert(commitMatches(actualCommit, expectedCommit), `/health commitSha is ${actualCommit}; expected ${expectedCommit}`)
+    resultLine('PASS', 'deployment commit', actualCommit)
+    return
+  }
+
+  const localCommit = localGitHead()
+  if (!localCommit) {
+    resultLine(actualCommit ? 'INFO' : 'WARN', 'deployment commit', actualCommit || '/health did not return commitSha and local git HEAD is unavailable')
+    return
+  }
+
+  if (!actualCommit) {
+    const detail = `/health did not return commitSha; local HEAD is ${localCommit.slice(0, 12)}`
+    if (strictLaunch) throw new Error(detail)
+    resultLine('WARN', 'deployment commit', detail)
+    return
+  }
+
+  if (commitMatches(actualCommit, localCommit)) {
+    resultLine('PASS', 'deployment commit', actualCommit)
+  } else {
+    const detail = `deployed=${actualCommit.slice(0, 12)}, local=${localCommit.slice(0, 12)}`
+    if (strictLaunch) throw new Error(`/health commitSha mismatch: ${detail}`)
+    resultLine('WARN', 'deployment commit drift', detail)
+  }
+
+  const dirtyStatus = localGitStatus()
+  if (dirtyStatus) {
+    const detail = 'local working tree has uncommitted changes; commit before public launch'
+    if (strictLaunch) throw new Error(detail)
+    resultLine('WARN', 'local git state', detail)
+  }
 }
 
 async function checkPublicPage(baseUrl, path, requiredText) {
@@ -544,7 +595,7 @@ async function main() {
     assert(health.response.ok && health.body?.ok, `/health returned HTTP ${health.response.status}`)
     assert(health.body.auth && health.body.chat && health.body.connectors && health.body.billing, '/health is missing expected service flags')
     resultLine('PASS', '/health', `model=${health.body.model}, storage=${health.body.storage}`)
-    checkExpectedCommit(health.body, expectedCommit)
+    checkDeploymentCommit(health.body, { expectedCommit, strictLaunch })
 
     await checkPublicPage(baseUrl, '/privacy', ['Privacy Policy', 'Google User Data', 'Limited Use', '/data-deletion'])
     await checkPublicPage(baseUrl, '/terms', ['Terms of Service', 'High-Risk Actions'])
