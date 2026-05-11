@@ -82,6 +82,7 @@ npm run build
 npm run test:launch-evidence
 npm run test:launch-env
 npm run test:launch-stripe
+npm run test:android-play-upload
 npm run test:release-preflight
 npm run test:billing
 npm run test:readiness
@@ -156,6 +157,7 @@ The launch-env smoke test verifies that placeholder/test values are rejected and
 npm run test:launch-evidence
 npm run test:launch-env
 npm run test:launch-stripe
+npm run test:android-play-upload
 ```
 
 Run the same audit concurrently to catch account/session persistence regressions under overlapping production requests:
@@ -364,6 +366,12 @@ npx vercel@latest deploy --prod --yes --force -e NOCLICK_COMMIT_SHA="$(git rev-p
 For app packages, use the manual `Build App Packages` workflow. It builds Android APK/AAB and the Windows installer, verifies signatures when `require_signing=true`, uploads workflow artifacts, and can attach them to a GitHub release when signing secrets are configured.
 
 When Android signing is ready but Windows code-signing is still pending, use the manual `Build Signed Android Package` workflow. It requires only the Android signing secrets, builds a signed APK/AAB, verifies the APK with `apksigner`, verifies the AAB with `jarsigner`, and uploads `ANDROID-SIGNING-EVIDENCE.txt` with the Android artifacts.
+
+After the workflow succeeds, stage and verify the Play Console upload folder from the workflow run:
+
+```bash
+npm run android:play-upload -- --run 25694777212 --release-tag v0.1.0-android-signed.3
+```
 
 Before running signed public packages, check whether the required GitHub Actions signing secrets exist:
 

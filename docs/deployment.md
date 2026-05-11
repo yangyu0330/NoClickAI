@@ -196,6 +196,14 @@ Run it with `require_signing=false` only for internal unsigned package testing. 
 
 If Android signing is ready before Windows code-signing, use the manual `Build Signed Android Package` workflow instead. It has the same Android signing checks but does not require `WINDOWS_CSC_LINK` or `WINDOWS_CSC_KEY_PASSWORD`, so it can produce a verified signed AAB for Play Console upload while Windows distribution remains blocked.
 
+After that workflow succeeds, download, checksum-verify, and stage the Play Console upload files:
+
+```bash
+npm run android:play-upload -- --run 25694777212 --release-tag v0.1.0-android-signed.3
+```
+
+Upload the staged `.aab` from `release/android-play-console/<release-tag>/` to Play Console. After Play Console accepts the release, pass the staged `ANDROID-SIGNING-EVIDENCE.txt` plus a non-secret Play Console marker to `npm run launch:evidence`.
+
 Before dispatching a signed build, run:
 
 ```bash

@@ -69,6 +69,9 @@ jobs:
       - name: Check Stripe launch script syntax
         run: node --check scripts/setup-stripe-launch.mjs
 
+      - name: Check Android Play upload script syntax
+        run: node --check scripts/prepare-android-play-upload.mjs
+
       - name: Check launch env smoke syntax
         run: node --check scripts/launch-env-smoke.mjs
 
@@ -77,6 +80,9 @@ jobs:
 
       - name: Check Stripe launch smoke syntax
         run: node --check scripts/stripe-launch-smoke.mjs
+
+      - name: Check Android Play upload smoke syntax
+        run: node --check scripts/android-play-upload-smoke.mjs
 
       - name: Check release preflight script syntax
         run: node --check scripts/release-signing-preflight.mjs
@@ -107,6 +113,9 @@ jobs:
 
       - name: Stripe launch smoke
         run: npm run test:launch-stripe
+
+      - name: Android Play upload smoke
+        run: npm run test:android-play-upload
 
       - name: Release signing preflight smoke
         run: npm run test:release-preflight
