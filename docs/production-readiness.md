@@ -128,7 +128,8 @@ High 작업은 실행 전에 반드시 승인 상태가 되어야 하며, 승인
 
 ## 현재 남은 공개 출시 블로커
 
-- GitHub Actions `VERCEL_TOKEN` 갱신 후 `Deploy Production` 성공 확인
+- GitHub Actions `VERCEL_TOKEN` 갱신 후 `Deploy Production` CLI 배포/로그 확인 복구
+- `allow_git_integration_fallback=true`로 Vercel Git integration 배포 커밋 검증 확인
 - Stripe live secret, recurring Price ID, webhook secret 설정
 - `NOCLICK_REQUIRE_SUBSCRIPTION=true` 설정
 - Google OAuth 공개 검증

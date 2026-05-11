@@ -22,6 +22,11 @@ on:
         required: false
         type: boolean
         default: false
+      allow_git_integration_fallback:
+        description: If Vercel CLI credentials are unavailable, verify the Git integration deployment instead
+        required: false
+        type: boolean
+        default: true
 
 concurrency:
   group: deploy-production
@@ -62,19 +67,45 @@ jobs:
       - name: Dependency audit
         run: npm audit --audit-level=high
 
-      - name: Verify Vercel deployment secrets
+      - name: Check Vercel CLI credentials
+        id: vercel_credentials
         shell: bash
         run: |
-          test -n "$VERCEL_TOKEN" || { echo "Missing VERCEL_TOKEN secret"; exit 1; }
-          test -n "$VERCEL_ORG_ID" || { echo "Missing VERCEL_ORG_ID secret"; exit 1; }
-          test -n "$VERCEL_PROJECT_ID" || { echo "Missing VERCEL_PROJECT_ID secret"; exit 1; }
+          missing=()
+          test -n "$VERCEL_TOKEN" || missing+=("VERCEL_TOKEN")
+          test -n "$VERCEL_ORG_ID" || missing+=("VERCEL_ORG_ID")
+          test -n "$VERCEL_PROJECT_ID" || missing+=("VERCEL_PROJECT_ID")
+
+          if [ "${#missing[@]}" -eq 0 ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "configured=false" >> "$GITHUB_OUTPUT"
+          message="Missing Vercel CLI secret(s): ${missing[*]}"
+          if [ "${{ inputs.allow_git_integration_fallback }}" = "true" ]; then
+            echo "::warning::$message. Falling back to Git integration deployment verification."
+          else
+            echo "::error::$message"
+            exit 1
+          fi
 
       - name: Validate Vercel token
         id: validate_vercel_token
+        if: steps.vercel_credentials.outputs.configured == 'true'
         shell: bash
         run: |
-          if ! npx vercel@latest whoami --token "$VERCEL_TOKEN" >/dev/null; then
-            echo "::error::VERCEL_TOKEN is invalid or expired. Create a new Vercel account token and update the GitHub repository secret named VERCEL_TOKEN."
+          if npx vercel@latest whoami --token "$VERCEL_TOKEN" >/dev/null; then
+            echo "valid=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "valid=false" >> "$GITHUB_OUTPUT"
+          message="VERCEL_TOKEN is invalid or expired. Create a new Vercel account token and update the GitHub repository secret named VERCEL_TOKEN."
+          if [ "${{ inputs.allow_git_integration_fallback }}" = "true" ]; then
+            echo "::warning::$message Falling back to Git integration deployment verification."
+          else
+            echo "::error::$message"
             exit 1
           fi
 
@@ -90,13 +121,16 @@ jobs:
         run: npm run build
 
       - name: Pull Vercel production settings
+        if: steps.validate_vercel_token.outputs.valid == 'true'
         run: npx vercel@latest pull --yes --environment=production --token "$VERCEL_TOKEN"
 
       - name: Build with Vercel production environment
+        if: steps.validate_vercel_token.outputs.valid == 'true'
         run: npx vercel@latest build --prod --token "$VERCEL_TOKEN"
 
       - name: Deploy prebuilt output to production
         id: deploy
+        if: steps.validate_vercel_token.outputs.valid == 'true'
         shell: bash
         run: |
           deployment_url="$(npx vercel@latest deploy --prebuilt --prod --token "$VERCEL_TOKEN")"
@@ -104,7 +138,35 @@ jobs:
           echo "Deployed: $deployment_url"
 
       - name: Inspect production deployment
+        if: steps.validate_vercel_token.outputs.valid == 'true'
         run: npx vercel@latest inspect "${{ steps.deploy.outputs.deployment_url }}" --token "$VERCEL_TOKEN"
+
+      - name: Verify Git integration deployment
+        if: ${{ inputs.allow_git_integration_fallback && steps.validate_vercel_token.outputs.valid != 'true' }}
+        shell: bash
+        run: |
+          base_url="${{ inputs.audit_base_url }}"
+          base_url="${base_url%/}"
+          deadline=$((SECONDS + 600))
+
+          echo "Waiting for $base_url to serve commit $GITHUB_SHA"
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            commit="$(
+              node -e "fetch(process.argv[1] + '/health').then((r) => r.json()).then((body) => process.stdout.write(String(body.commitSha || ''))).catch(() => process.exit(2))" "$base_url" \
+                || true
+            )"
+
+            if [ "$commit" = "$GITHUB_SHA" ]; then
+              echo "Production is serving $commit"
+              exit 0
+            fi
+
+            echo "Production commit is '${commit:-unavailable}', waiting..."
+            sleep 10
+          done
+
+          echo "::error::Production did not serve $GITHUB_SHA before timeout. Update VERCEL_TOKEN or check the Vercel Git integration."
+          exit 1
 
       - name: Run production audit
         if: inputs.run_production_audit
@@ -118,5 +180,5 @@ jobs:
           NOCLICK_AUDIT_STRICT_LAUNCH: ${{ inputs.strict_launch }}
 
       - name: Check production error logs
-        if: always() && steps.validate_vercel_token.outcome == 'success'
+        if: always() && steps.validate_vercel_token.outputs.valid == 'true'
         run: npx vercel@latest logs --level error --since 1h --environment production --no-branch --no-follow --token "$VERCEL_TOKEN"

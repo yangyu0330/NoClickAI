@@ -88,6 +88,8 @@ The public web app also exposes the same release links at `/downloads`.
 
 The repository includes a manual `Deploy Production` workflow. It verifies the app, pulls Vercel Production settings, builds with Vercel, deploys prebuilt output to Production, inspects the deployment, runs `npm run audit:production`, and checks recent Production error logs.
 
+When `allow_git_integration_fallback=true`, the workflow can still verify Production without a valid Vercel CLI token. If the CLI token is missing or expired, it waits for the Vercel Git integration to serve the workflow commit at `/health.commitSha`, then runs the same production audit with `NOCLICK_AUDIT_EXPECTED_COMMIT`.
+
 Add these GitHub repository secrets before using it:
 
 - `VERCEL_TOKEN`

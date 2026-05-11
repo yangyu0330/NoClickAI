@@ -262,11 +262,11 @@ Inspect a deployment:
 npx vercel@latest inspect https://noclickai-zeta.vercel.app
 ```
 
-The repository also includes a manual GitHub Actions workflow named `Deploy Production`. Configure `VERCEL_TOKEN`, `VERCEL_ORG_ID`, and `VERCEL_PROJECT_ID` as repository secrets, then run the workflow to verify, deploy to Vercel Production, inspect the deployment, run `npm run audit:production`, and check recent Production error logs.
+The repository also includes a manual GitHub Actions workflow named `Deploy Production`. Configure `VERCEL_TOKEN`, `VERCEL_ORG_ID`, and `VERCEL_PROJECT_ID` as repository secrets, then run the workflow to verify, deploy to Vercel Production, inspect the deployment, run `npm run audit:production`, and check recent Production error logs. If the Vercel CLI token is missing or expired but the Vercel Git integration has already deployed the commit, the workflow can fall back to waiting for `/health.commitSha` to match the workflow commit.
 
 The deployment workflow writes the current Git commit into `/health` and the production audit checks it with `NOCLICK_AUDIT_EXPECTED_COMMIT`, so a green deploy verifies the expected commit is what production is serving.
 
-If `Deploy Production` fails at `Validate Vercel token`, create a new Vercel account token and update the GitHub secret:
+If `Deploy Production` reports an invalid Vercel token, create a new Vercel account token and update the GitHub secret so CLI deploys, Vercel inspect, and Vercel log scans work again:
 
 ```powershell
 $env:VERCEL_TOKEN='new-vercel-token'
