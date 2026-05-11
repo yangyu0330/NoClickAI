@@ -89,6 +89,25 @@ jobs:
           chmod +x ./gradlew
           ./gradlew assembleRelease bundleRelease --no-daemon
 
+      - name: Verify Android release signatures
+        shell: bash
+        run: |
+          if [ "${{ inputs.require_signing }}" != "true" ]; then
+            echo "Skipping Android signature verification for unsigned internal package testing."
+            exit 0
+          fi
+
+          apk_path="$(find android/app/build/outputs/apk/release -type f -name '*.apk' | head -n 1)"
+          aab_path="$(find android/app/build/outputs/bundle/release -type f -name '*.aab' | head -n 1)"
+          test -n "$apk_path" || { echo "Android release APK was not found"; exit 1; }
+          test -n "$aab_path" || { echo "Android release AAB was not found"; exit 1; }
+
+          apksigner="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -x "$apksigner" || { echo "Android apksigner was not found"; exit 1; }
+
+          "$apksigner" verify --verbose --print-certs "$apk_path"
+          jarsigner -verify "$aab_path"
+
       - name: Stage Android artifacts
         shell: bash
         run: |
@@ -166,6 +185,23 @@ jobs:
           Get-FileHash artifacts/windows/* -Algorithm SHA256 |
             ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } |
             Set-Content artifacts/windows/SHA256SUMS-windows.txt
+
+      - name: Verify Windows installer signature
+        shell: pwsh
+        run: |
+          if ('${{ inputs.require_signing }}' -ne 'true') {
+            Write-Host 'Skipping Windows Authenticode verification for unsigned internal package testing.'
+            exit 0
+          }
+
+          $installer = Get-ChildItem artifacts/windows -Filter '*.exe' | Where-Object { $_.Name -like '*Setup*' } | Select-Object -First 1
+          if (-not $installer) { throw 'Windows staged installer was not found.' }
+
+          $signature = Get-AuthenticodeSignature -FilePath $installer.FullName
+          if ($signature.Status -ne 'Valid') {
+            throw "Windows installer signature status is $($signature.Status): $($signature.StatusMessage)"
+          }
+          Write-Host "Windows installer signature is valid: $($signature.SignerCertificate.Subject)"
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v6

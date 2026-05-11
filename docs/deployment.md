@@ -137,6 +137,8 @@ Windows:
 
 Set `create_github_release=true` only after reviewing the package artifacts. The workflow will attach the APK, AAB, Windows installer, blockmap, and checksum files to the selected GitHub release tag.
 
+When `require_signing=true`, the workflow also verifies the produced Android APK with `apksigner`, verifies the Android AAB with `jarsigner`, and verifies the Windows installer with Authenticode before uploading artifacts.
+
 ## Accounts
 
 The server provides:
