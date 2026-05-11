@@ -82,6 +82,20 @@ npm run audit:production
 
 The audit checks `/health`, the public review pages, the downloads page, authenticated readiness, and account deletion cleanup using a temporary account.
 
+When subscription enforcement is enabled, run the audit with an admin or paid account instead of a temporary free account:
+
+```bash
+NOCLICK_AUDIT_EMAIL=admin@example.com NOCLICK_AUDIT_PASSWORD=... npm run audit:production
+```
+
+PowerShell:
+
+```powershell
+$env:NOCLICK_AUDIT_EMAIL='admin@example.com'
+$env:NOCLICK_AUDIT_PASSWORD='...'
+npm run audit:production
+```
+
 ## Environment
 
 Copy `.env.example` to `.env` for local development and fill in the values that match your environment.
@@ -241,6 +255,12 @@ Or run the bundled production audit:
 ```bash
 npm run audit:production
 ```
+
+Optional audit environment variables:
+
+- `NOCLICK_AUDIT_BASE_URL`: target deployment URL
+- `NOCLICK_AUDIT_EMAIL` and `NOCLICK_AUDIT_PASSWORD`: existing admin/pro account for paid-launch audits
+- `NOCLICK_AUDIT_TOKEN`: existing session token when password login should not be used
 
 ## Documentation
 

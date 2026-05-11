@@ -7,6 +7,9 @@ const DEFAULT_BASE_URL = 'https://noclickai-zeta.vercel.app'
 function parseArgs(argv) {
   const args = {
     baseUrl: process.env.NOCLICK_AUDIT_BASE_URL || DEFAULT_BASE_URL,
+    email: process.env.NOCLICK_AUDIT_EMAIL || '',
+    password: process.env.NOCLICK_AUDIT_PASSWORD || '',
+    token: process.env.NOCLICK_AUDIT_TOKEN || '',
   }
 
   for (let index = 2; index < argv.length; index += 1) {
@@ -18,6 +21,33 @@ function parseArgs(argv) {
     }
     if (arg.startsWith('--base-url=')) {
       args.baseUrl = arg.slice('--base-url='.length)
+      continue
+    }
+    if (arg === '--email') {
+      args.email = argv[index + 1] || args.email
+      index += 1
+      continue
+    }
+    if (arg.startsWith('--email=')) {
+      args.email = arg.slice('--email='.length)
+      continue
+    }
+    if (arg === '--password') {
+      args.password = argv[index + 1] || args.password
+      index += 1
+      continue
+    }
+    if (arg.startsWith('--password=')) {
+      args.password = arg.slice('--password='.length)
+      continue
+    }
+    if (arg === '--token') {
+      args.token = argv[index + 1] || args.token
+      index += 1
+      continue
+    }
+    if (arg.startsWith('--token=')) {
+      args.token = arg.slice('--token='.length)
     }
   }
 
@@ -87,6 +117,18 @@ async function createAuditAccount(baseUrl) {
   return { email, token: body.token }
 }
 
+async function loginAuditAccount(baseUrl, email, password) {
+  const { response, body } = await fetchJson(`${baseUrl}/v1/auth/login`, {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+  })
+
+  assert(response.ok, `/v1/auth/login returned HTTP ${response.status}`)
+  assert(body?.token, '/v1/auth/login did not return a session token')
+  resultLine('PASS', 'audit account login', email)
+  return { email, token: body.token, temporary: false }
+}
+
 async function deleteAuditAccount(baseUrl, account) {
   const headers = { Authorization: `Bearer ${account.token}` }
   const { response, body } = await fetchJson(`${baseUrl}/v1/auth/delete-account`, {
@@ -122,6 +164,9 @@ async function checkReadiness(baseUrl, account) {
   const { response, body } = await fetchJson(`${baseUrl}/v1/readiness`, {
     headers: { Authorization: `Bearer ${account.token}` },
   })
+  if (response.status === 402) {
+    throw new Error('/v1/readiness requires a paid, pro, or admin account. Set NOCLICK_AUDIT_EMAIL and NOCLICK_AUDIT_PASSWORD to an admin/pro account for paid-launch audits.')
+  }
   assert(response.ok, `/v1/readiness returned HTTP ${response.status}`)
   assert(body?.ok, '/v1/readiness did not return ok=true')
 
@@ -137,7 +182,7 @@ async function checkReadiness(baseUrl, account) {
 }
 
 async function main() {
-  const { baseUrl } = parseArgs(process.argv)
+  const { baseUrl, email, password, token } = parseArgs(process.argv)
   let account = null
 
   console.log(`NoClick AI production audit: ${baseUrl}`)
@@ -153,10 +198,17 @@ async function main() {
     await checkPublicPage(baseUrl, '/downloads', ['Downloads', 'Android', 'Windows'])
     await checkPublicPage(baseUrl, '/data-deletion', ['Data Deletion', 'Delete Your Account', 'Disconnect Google'])
 
-    account = await createAuditAccount(baseUrl)
+    if (token) {
+      account = { email: 'token-authenticated account', token, temporary: false }
+      resultLine('PASS', 'audit token configured')
+    } else if (email && password) {
+      account = await loginAuditAccount(baseUrl, email, password)
+    } else {
+      account = { ...(await createAuditAccount(baseUrl)), temporary: true }
+    }
     await checkReadiness(baseUrl, account)
   } finally {
-    if (account) {
+    if (account?.temporary) {
       await deleteAuditAccount(baseUrl, account)
     }
   }
