@@ -301,7 +301,7 @@ Inspect a deployment:
 npx vercel@latest inspect https://noclickai-zeta.vercel.app
 ```
 
-The repository also includes a manual GitHub Actions workflow named `Deploy Production`. Configure `VERCEL_TOKEN`, `VERCEL_ORG_ID`, and `VERCEL_PROJECT_ID` as repository secrets, then run the workflow to verify, deploy to Vercel Production, inspect the deployment, run `npm run audit:production`, and check recent Production error logs. If the Vercel CLI token is missing or expired but the Vercel Git integration has already deployed the commit, the workflow can fall back to waiting for `/health.commitSha` to match the workflow commit.
+The repository also includes a manual GitHub Actions workflow named `Deploy Production`. Configure `VERCEL_TOKEN`, `VERCEL_ORG_ID`, and `VERCEL_PROJECT_ID` as repository secrets, then run the workflow to verify, run the billing webhook smoke, deploy to Vercel Production, inspect the deployment, run `npm run audit:production`, and check recent Production error logs. If the Vercel CLI token is missing or expired but the Vercel Git integration has already deployed the commit, the workflow can fall back to waiting for `/health.commitSha` to match the workflow commit.
 
 The deployment workflow writes the current Git commit into `/health` and the production audit checks it with `NOCLICK_AUDIT_EXPECTED_COMMIT`, so a green deploy verifies the expected commit is what production is serving.
 
@@ -310,6 +310,12 @@ If `Deploy Production` reports an invalid Vercel token, create a new Vercel acco
 ```powershell
 $env:VERCEL_TOKEN='new-vercel-token'
 gh secret set VERCEL_TOKEN --repo yangyu0330/NoClickAI --body $env:VERCEL_TOKEN
+```
+
+If GitHub Actions cannot deploy because `VERCEL_TOKEN` is invalid and the deploy hook does not publish the current commit, deploy from a locally logged-in Vercel CLI session:
+
+```bash
+npx vercel@latest deploy --prod --yes --force -e NOCLICK_COMMIT_SHA="$(git rev-parse HEAD)" -b NOCLICK_COMMIT_SHA="$(git rev-parse HEAD)"
 ```
 
 For app packages, use the manual `Build App Packages` workflow. It builds Android APK/AAB and the Windows installer, verifies signatures when `require_signing=true`, uploads workflow artifacts, and can attach them to a GitHub release when signing secrets are configured.

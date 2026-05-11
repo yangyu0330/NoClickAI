@@ -75,6 +75,9 @@ jobs:
       - name: Check audit script syntax
         run: node --check scripts/production-audit.mjs
 
+      - name: Check billing smoke syntax
+        run: node --check scripts/billing-webhook-smoke.mjs
+
       - name: Dependency audit
         run: npm audit --audit-level=high
 
@@ -128,6 +131,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Billing webhook smoke
+        run: npm run test:billing
+
       - name: Build app
         run: npm run build
 
@@ -179,6 +185,7 @@ jobs:
           base_url="${{ inputs.audit_base_url }}"
           base_url="${base_url%/}"
           deadline=$((SECONDS + 600))
+          first_seen=""
 
           echo "Waiting for $base_url to serve commit $GITHUB_SHA"
           while [ "$SECONDS" -lt "$deadline" ]; do
@@ -186,6 +193,9 @@ jobs:
               node -e "fetch(process.argv[1] + '/health').then((r) => r.json()).then((body) => process.stdout.write(String(body.commitSha || ''))).catch(() => process.exit(2))" "$base_url" \
                 || true
             )"
+            if [ -z "$first_seen" ] && [ -n "$commit" ]; then
+              first_seen="$commit"
+            fi
 
             if [ "$commit" = "$GITHUB_SHA" ]; then
               echo "Production is serving $commit"
@@ -196,7 +206,7 @@ jobs:
             sleep 10
           done
 
-          echo "::error::Production did not serve $GITHUB_SHA before timeout. Update VERCEL_TOKEN or check the Vercel Git integration."
+          echo "::error::Production did not serve $GITHUB_SHA before timeout. Last observed commit was '${commit:-unavailable}' and first observed commit was '${first_seen:-unavailable}'. The deploy hook did not publish the workflow commit, so update VERCEL_TOKEN or repair the Vercel Git integration/deploy hook. Local fallback: npx vercel@latest deploy --prod --yes --force -e NOCLICK_COMMIT_SHA=$GITHUB_SHA -b NOCLICK_COMMIT_SHA=$GITHUB_SHA"
           exit 1
 
       - name: Run production audit

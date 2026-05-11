@@ -89,7 +89,7 @@ The public web app also exposes the same release links at `/downloads`.
 
 ## GitHub Actions Production Deploy
 
-The repository includes a manual `Deploy Production` workflow. It verifies the app, pulls Vercel Production settings, builds with Vercel, deploys prebuilt output to Production, inspects the deployment, runs `npm run audit:production`, and checks recent Production error logs.
+The repository includes a manual `Deploy Production` workflow. It verifies the app, runs the local billing webhook smoke, pulls Vercel Production settings, builds with Vercel, deploys prebuilt output to Production, inspects the deployment, runs `npm run audit:production`, and checks recent Production error logs.
 
 When `allow_git_integration_fallback=true`, the workflow can still verify Production without a valid Vercel CLI token. If the CLI token is missing or expired, it waits for the Vercel Git integration to serve the workflow commit at `/health.commitSha`, then runs the same production audit with `NOCLICK_AUDIT_EXPECTED_COMMIT`.
 
@@ -103,6 +103,12 @@ Add these GitHub repository secrets before using it:
 The current linked Vercel project IDs are visible in `.vercel/project.json` on a linked local checkout. Do not commit a Vercel token.
 
 `VERCEL_DEPLOY_HOOK_URL` is optional when `VERCEL_TOKEN` is valid, but keep it configured for fallback deployments. If the Vercel CLI token is missing or expired and `allow_git_integration_fallback=true`, the workflow triggers this deploy hook first, then waits for `/health.commitSha` to report the workflow commit.
+
+If both `VERCEL_TOKEN` is invalid and the deploy hook does not publish the workflow commit, fix the GitHub secret first. For an emergency operator deploy from a machine already logged in to Vercel CLI, run:
+
+```bash
+npx vercel@latest deploy --prod --yes --force -e NOCLICK_COMMIT_SHA="$(git rev-parse HEAD)" -b NOCLICK_COMMIT_SHA="$(git rev-parse HEAD)"
+```
 
 Optional audit secrets:
 
