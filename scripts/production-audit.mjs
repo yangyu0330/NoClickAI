@@ -115,6 +115,14 @@ async function checkPublicPage(baseUrl, path, requiredText) {
   resultLine('PASS', path, `HTTP ${response.status}`)
 }
 
+async function checkStaticTraversalGuard(baseUrl) {
+  const { response, text } = await fetchText(`${baseUrl}/..%2fpackage.json`)
+  assert(response.status !== 500, 'static traversal probe returned HTTP 500')
+  assert(!text.includes('"name": "noclickai"'), 'static traversal probe exposed package.json')
+  assert(!text.includes('"scripts"'), 'static traversal probe exposed package metadata')
+  resultLine('PASS', 'static traversal guard', `HTTP ${response.status}`)
+}
+
 async function createAuditAccount(baseUrl) {
   const suffix = crypto.randomUUID().replaceAll('-', '').slice(0, 12)
   const email = `noclick-audit-${suffix}@example.com`
@@ -513,6 +521,7 @@ async function main() {
     await checkPublicPage(baseUrl, '/terms', ['Terms of Service', 'High-Risk Actions'])
     await checkPublicPage(baseUrl, '/downloads', ['Downloads', 'Android', 'Windows'])
     await checkPublicPage(baseUrl, '/data-deletion', ['Data Deletion', 'Delete Your Account', 'Disconnect Google'])
+    await checkStaticTraversalGuard(baseUrl)
 
     if (token) {
       account = { email: 'token-authenticated account', token, temporary: false }

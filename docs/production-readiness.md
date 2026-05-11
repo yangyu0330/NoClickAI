@@ -103,6 +103,7 @@ gh secret set VERCEL_TOKEN --repo yangyu0330/NoClickAI --body $env:VERCEL_TOKEN
 
 - `/health`
 - `/privacy`, `/terms`, `/downloads`, `/data-deletion`
+- 정적 파일 경로 traversal 차단
 - 인증된 `/v1/readiness`
 - billing status, checkout, portal의 현재 환경별 동작
 - Stripe webhook의 서명 없는 요청 거부

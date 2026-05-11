@@ -3,7 +3,7 @@ import { createServer as createHttpsServer } from 'node:https'
 import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
 import { readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import crypto from 'node:crypto'
 import { neon } from '@neondatabase/serverless'
@@ -315,10 +315,11 @@ function sendJson(response, status, body) {
 async function sendStatic(response, url) {
   const pathname = decodeURIComponent(url.pathname)
   const safePath = pathname === '/' ? '/index.html' : pathname
-  const target = join(WEB_DIR, safePath.replace(/^\/+/, ''))
-  const root = join(WEB_DIR)
+  const root = resolve(WEB_DIR)
+  const target = resolve(root, safePath.replace(/^\/+/, ''))
+  const relativeTarget = relative(root, target)
 
-  if (!target.startsWith(root)) {
+  if (relativeTarget === '..' || relativeTarget.startsWith(`..${sep}`) || isAbsolute(relativeTarget)) {
     sendJson(response, 403, { error: 'forbidden' })
     return
   }
