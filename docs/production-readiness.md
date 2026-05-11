@@ -33,6 +33,7 @@
    - `OPENAI_API_KEY`
    - `NOCLICK_OPENAI_MODEL`
    - `NOCLICK_ADMIN_EMAILS`
+   - `NOCLICK_EXPOSE_ERROR_DETAILS=false`
 
 2. Google OAuth
    - Authorized redirect URI: `https://noclickai-zeta.vercel.app/v1/connectors/google/callback`

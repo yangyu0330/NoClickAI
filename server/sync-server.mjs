@@ -34,6 +34,7 @@ const STRIPE_PORTAL_RETURN_URL = process.env.STRIPE_PORTAL_RETURN_URL || PUBLIC_
 const REQUIRE_SUBSCRIPTION = process.env.NOCLICK_REQUIRE_SUBSCRIPTION === 'true'
 const TOKEN_ENCRYPTION_KEY = process.env.NOCLICK_TOKEN_ENCRYPTION_KEY || SYNC_TOKEN
 const ENABLE_GMAIL_DRAFTS = process.env.NOCLICK_ENABLE_GMAIL_DRAFTS === 'true'
+const EXPOSE_ERROR_DETAILS = process.env.NOCLICK_EXPOSE_ERROR_DETAILS === 'true' || (!process.env.VERCEL && process.env.NODE_ENV !== 'production')
 const ADMIN_EMAILS = new Set(
   String(process.env.NOCLICK_ADMIN_EMAILS || '')
     .split(',')
@@ -1006,6 +1007,18 @@ function envConfiguredItem(name, category, label, detail = '') {
   )
 }
 
+function errorDetailsReadinessItem() {
+  return readinessItem(
+    'NOCLICK_EXPOSE_ERROR_DETAILS',
+    'core',
+    'Detailed error exposure',
+    EXPOSE_ERROR_DETAILS ? 'warning' : 'ready',
+    EXPOSE_ERROR_DETAILS ? 'Detailed server errors are exposed to clients.' : 'Detailed server errors are hidden from clients.',
+    EXPOSE_ERROR_DETAILS ? 'Unset NOCLICK_EXPOSE_ERROR_DETAILS in production.' : '',
+    { launchBlocking: EXPOSE_ERROR_DETAILS },
+  )
+}
+
 function tokenEncryptionKeyReadinessItem() {
   const configured = envPresent('NOCLICK_TOKEN_ENCRYPTION_KEY')
   const separateFromSyncToken = TOKEN_ENCRYPTION_KEY && TOKEN_ENCRYPTION_KEY !== SYNC_TOKEN
@@ -1271,6 +1284,7 @@ async function productionReadinessReport(store, userId) {
     envConfiguredItem('OPENAI_API_KEY', 'core', 'OpenAI API key'),
     envConfiguredItem('DATABASE_URL', 'core', 'Postgres database'),
     envConfiguredItem('NOCLICK_ADMIN_EMAILS', 'core', 'Admin email allowlist'),
+    errorDetailsReadinessItem(),
     tokenEncryptionKeyReadinessItem(),
     readinessItem(
       'NOCLICK_SYNC_TOKEN',
@@ -3004,6 +3018,7 @@ export async function handleRequest(request, response) {
       stripeConfigured: stripeConfigured(),
       stripeWebhookConfigured: Boolean(STRIPE_WEBHOOK_SECRET),
       requireSubscription: REQUIRE_SUBSCRIPTION,
+      errorDetailsEnabled: EXPOSE_ERROR_DETAILS,
       storage: STORAGE_TARGET,
       commitSha: APP_COMMIT_SHA,
       time: new Date().toISOString(),
@@ -3121,9 +3136,10 @@ export async function handleRequest(request, response) {
 
     sendJson(response, 405, { error: 'method_not_allowed' })
   } catch (error) {
-    sendJson(response, error.statusCode || 500, {
-      error: 'server_error',
-      detail: error instanceof Error ? error.message : 'unknown',
+    const status = error.statusCode || 500
+    sendJson(response, status, {
+      error: status >= 500 ? 'server_error' : 'request_failed',
+      ...(EXPOSE_ERROR_DETAILS ? { detail: error instanceof Error ? error.message : 'unknown' } : {}),
     })
   }
 }
