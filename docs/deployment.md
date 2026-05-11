@@ -148,6 +148,19 @@ npm run launch:status
 
 This command reads the deployed `/health` and authenticated `/v1/readiness` endpoints, using `NOCLICK_AUDIT_EMAIL`/`NOCLICK_AUDIT_PASSWORD` when supplied or a temporary self-deleting account otherwise. It exits with a failure while launch-blocking readiness items remain and prints the next strict audit command to run after the blockers are resolved.
 
+Once Google verification, Stripe live billing, Android release signing, and Windows code signing are complete, use the launch env helper to apply the final production attestations and billing values. Copy the template, fill in real values, and dry-run the validation first:
+
+```bash
+cp .env.launch.example .env.launch.local
+npm run launch:env -- --file .env.launch.local
+```
+
+The helper does not print secret values. It requires live-mode Stripe prefixes and non-secret evidence markers, and it only writes Vercel Production environment variables when `--apply` is present:
+
+```bash
+npm run launch:env -- --file .env.launch.local --apply --deploy --verify --strict
+```
+
 Or set this in GitHub Actions when running `CI` or `Deploy Production` manually:
 
 - `strict_launch=true`

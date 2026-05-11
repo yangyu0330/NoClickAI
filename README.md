@@ -122,6 +122,18 @@ npm run launch:status
 
 `launch:status` checks `/health`, creates a temporary account when audit credentials are not supplied, reads `/v1/readiness`, deletes the temporary account, and prints the exact launch-blocking items that still need provider-console or signing work. It exits nonzero while any launch blocker remains.
 
+After the external launch work is complete, copy `.env.launch.example` to `.env.launch.local`, fill in the live Stripe values and non-secret Google/Android/Windows evidence markers, then validate without changing Vercel:
+
+```bash
+npm run launch:env -- --file .env.launch.local
+```
+
+To apply those values to Vercel Production, redeploy, and run the strict launch gate:
+
+```bash
+npm run launch:env -- --file .env.launch.local --apply --deploy --verify --strict
+```
+
 Run the same audit concurrently to catch account/session persistence regressions under overlapping production requests:
 
 ```bash

@@ -14,6 +14,7 @@
     "launch:status": "node scripts/launch-status.mjs",
     "audit:production": "node scripts/production-audit.mjs",
     "audit:production:parallel": "node scripts/production-parallel-audit.mjs",
+    "launch:env": "node scripts/apply-launch-env.mjs",
     "test:billing": "node scripts/billing-webhook-smoke.mjs",
     "test:readiness": "node scripts/readiness-smoke.mjs",
     "dev:full": "concurrently -n web,sync \"npm:dev:web\" \"npm:sync:server\"",
