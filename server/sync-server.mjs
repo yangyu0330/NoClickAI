@@ -130,6 +130,8 @@ const OAUTH_PROVIDERS = {
     tokenUrl: 'https://oauth2.googleapis.com/token',
     redirectUri: process.env.GOOGLE_REDIRECT_URI || `${SERVER_BASE_URL}/v1/connectors/google/callback`,
     scopes: [
+      'openid',
+      'https://www.googleapis.com/auth/userinfo.email',
       'https://www.googleapis.com/auth/calendar.events',
       'https://www.googleapis.com/auth/gmail.compose',
     ],
@@ -890,6 +892,39 @@ function buildOAuthUrl(store, userId, providerId) {
   return `${provider.authUrl}?${params.toString()}`
 }
 
+function decodeJwtPayload(token) {
+  if (!token) return {}
+  const parts = String(token).split('.')
+  if (parts.length < 2) return {}
+  try {
+    return JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'))
+  } catch {
+    return {}
+  }
+}
+
+async function fetchGoogleProfile(accessToken, idToken) {
+  const idPayload = decodeJwtPayload(idToken)
+  if (idPayload.email) {
+    return {
+      googleEmail: String(idPayload.email),
+      googleEmailVerified: Boolean(idPayload.email_verified),
+    }
+  }
+
+  try {
+    const profile = await fetchJson('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    return {
+      googleEmail: String(profile.email || ''),
+      googleEmailVerified: Boolean(profile.email_verified),
+    }
+  } catch {
+    return {}
+  }
+}
+
 async function exchangeOAuthCode(providerKey, code) {
   const provider = OAUTH_PROVIDERS[providerKey]
   if (!provider) throw new Error('unknown_provider')
@@ -907,12 +942,13 @@ async function exchangeOAuthCode(providerKey, code) {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body,
     })
+    const profile = await fetchGoogleProfile(result.access_token, result.id_token)
     return {
       accessToken: result.access_token,
       refreshToken: result.refresh_token,
       expiresAt: result.expires_in ? new Date(Date.now() + result.expires_in * 1000).toISOString() : null,
       scopes: String(result.scope || '').split(' ').filter(Boolean),
-      metadata: { tokenType: result.token_type },
+      metadata: { tokenType: result.token_type, ...profile },
     }
   }
 
@@ -1462,7 +1498,8 @@ function isSelfAddressed(prompt) {
 function resolveGmailRecipient(store, run, step) {
   const explicit = String(step.input.to || '').trim()
   if (explicit) return explicit
-  return isSelfAddressed(run.prompt) ? store.users[run.userId]?.email || '' : ''
+  const googleEmail = getConnection(store, run.userId, 'google')?.metadata?.googleEmail || ''
+  return isSelfAddressed(run.prompt) ? googleEmail || store.users[run.userId]?.email || '' : ''
 }
 
 async function executeGoogleCalendar(store, run, step) {
