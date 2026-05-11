@@ -166,6 +166,7 @@ The launch-env smoke test runs locally and in CI. It verifies that placeholder/t
 ```bash
 npm run test:launch-evidence
 npm run test:launch-env
+npm run test:launch-stripe
 ```
 
 Or set this in GitHub Actions when running `CI` or `Deploy Production` manually:
@@ -277,6 +278,20 @@ Listen only to required events:
 - `invoice.payment_failed`
 
 The webhook verifies `Stripe-Signature` against `STRIPE_WEBHOOK_SECRET` using the raw request body.
+
+After adding `STRIPE_SECRET_KEY=sk_live_...` to `.env.launch.local`, the Stripe launch helper can create the recurring Price and webhook endpoint through Stripe's API, then merge `STRIPE_PRICE_ID`, `STRIPE_WEBHOOK_SECRET`, and `NOCLICK_REQUIRE_SUBSCRIPTION=true` back into the file:
+
+```bash
+npm run launch:stripe -- \
+  --file .env.launch.local \
+  --amount 9900 \
+  --currency usd \
+  --interval month \
+  --base-url https://noclickai-zeta.vercel.app \
+  --apply
+```
+
+Without `--apply`, the helper only validates the input and prints the setup plan. It never prints the Stripe secret key or webhook signing secret.
 
 For public launch, Vercel Production readiness requires live-mode Stripe values: `STRIPE_SECRET_KEY` must start with `sk_live_`, `STRIPE_PRICE_ID` must start with `price_`, and `STRIPE_WEBHOOK_SECRET` must start with `whsec_`. Test-mode Stripe keys are useful locally but remain launch-blocking in production readiness.
 

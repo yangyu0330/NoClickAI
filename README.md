@@ -81,12 +81,13 @@ npm run lint
 npm run build
 npm run test:launch-evidence
 npm run test:launch-env
+npm run test:launch-stripe
 npm run test:billing
 npm run test:readiness
 npm run test:e2e
 ```
 
-The GitHub Actions CI workflow runs `npm ci`, server syntax checks, audit-script syntax checks, high-severity dependency audit, lint, build, local launch-evidence smoke, local launch-env smoke, local billing webhook smoke, local readiness smoke, and a Playwright smoke test on pushes to `main` and pull requests.
+The GitHub Actions CI workflow runs `npm ci`, server syntax checks, audit-script syntax checks, high-severity dependency audit, lint, build, local launch-evidence smoke, local launch-env smoke, local Stripe launch smoke, local billing webhook smoke, local readiness smoke, and a Playwright smoke test on pushes to `main` and pull requests.
 
 The local billing smoke starts an isolated sync server with subscription enforcement enabled, rejects an unsigned Stripe webhook, applies signed checkout, past-due, payment-recovery, and deletion events, and verifies paid routes open and close with the Stripe subscription state:
 
@@ -136,6 +137,12 @@ If you have signed app package evidence files, generate the non-secret evidence 
 npm run launch:evidence -- --android artifacts/android/ANDROID-SIGNING-EVIDENCE.txt --android-play-console play-console-production-YYYY-MM-DD --windows artifacts/windows/WINDOWS-SIGNING-EVIDENCE.txt --google-evidence google-oauth-approved-YYYY-MM-DD --output .env.launch.local
 ```
 
+After adding `STRIPE_SECRET_KEY=sk_live_...` to `.env.launch.local`, create the recurring Stripe Price and billing webhook endpoint:
+
+```bash
+npm run launch:stripe -- --file .env.launch.local --amount 9900 --currency usd --interval month --base-url https://noclickai-zeta.vercel.app --apply
+```
+
 To apply those values to Vercel Production, redeploy, and run the strict launch gate:
 
 ```bash
@@ -147,6 +154,7 @@ The launch-env smoke test verifies that placeholder/test values are rejected and
 ```bash
 npm run test:launch-evidence
 npm run test:launch-env
+npm run test:launch-stripe
 ```
 
 Run the same audit concurrently to catch account/session persistence regressions under overlapping production requests:

@@ -67,11 +67,17 @@ jobs:
       - name: Check launch evidence script syntax
         run: node --check scripts/collect-launch-evidence.mjs
 
+      - name: Check Stripe launch script syntax
+        run: node --check scripts/setup-stripe-launch.mjs
+
       - name: Check launch env smoke syntax
         run: node --check scripts/launch-env-smoke.mjs
 
       - name: Check launch evidence smoke syntax
         run: node --check scripts/launch-evidence-smoke.mjs
+
+      - name: Check Stripe launch smoke syntax
+        run: node --check scripts/stripe-launch-smoke.mjs
 
       - name: Check production E2E script syntax
         run: node --check scripts/production-e2e.mjs
@@ -96,6 +102,9 @@ jobs:
 
       - name: Launch evidence smoke
         run: npm run test:launch-evidence
+
+      - name: Stripe launch smoke
+        run: npm run test:launch-stripe
 
       - name: Readiness smoke
         run: npm run test:readiness

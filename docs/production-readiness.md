@@ -79,14 +79,17 @@ node --check server/sync-server.mjs
 node --check scripts/production-audit.mjs
 node --check scripts/apply-launch-env.mjs
 node --check scripts/collect-launch-evidence.mjs
+node --check scripts/setup-stripe-launch.mjs
 node --check scripts/launch-env-smoke.mjs
 node --check scripts/launch-evidence-smoke.mjs
+node --check scripts/stripe-launch-smoke.mjs
 node --check scripts/billing-webhook-smoke.mjs
 node --check scripts/readiness-smoke.mjs
 npm audit --audit-level=high
 npm run lint
 npm run test:launch-evidence
 npm run test:launch-env
+npm run test:launch-stripe
 npm run test:billing
 npm run test:readiness
 npm run build
