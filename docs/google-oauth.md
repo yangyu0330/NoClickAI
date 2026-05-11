@@ -46,13 +46,22 @@ Then redeploy production.
 
 Approve and execute the run. The expected result is one Google Calendar event and one Gmail draft.
 
+To test actual Gmail sending, use a separate request that explicitly asks to send email, then approve the high-risk step before executing:
+
+```text
+Send a Gmail test email to myself with subject NoClick AI send verification.
+```
+
+The expected result is one Gmail message in the Sent folder. Do not use this test with someone else's address unless they expect the email.
+
 ## Notes
 
 - Calendar and Gmail share one Google OAuth connection.
-- Gmail support creates drafts only; it does not send email automatically.
+- Gmail support can create drafts and can send email when the user explicitly asks for sending. Sending is always high risk and requires approval before execution.
 - For public user access outside test users, Google may require OAuth app verification and policy review.
 
 Official references:
 - https://developers.google.com/identity/protocols/oauth2/web-server
 - https://developers.google.com/workspace/calendar/api/v3/reference/events/insert
 - https://developers.google.com/workspace/gmail/api/auth/scopes
+- https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/send

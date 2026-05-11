@@ -109,7 +109,7 @@ Google Calendar/Gmail 실제 OAuth 연결은 [google-oauth.md](docs/google-oauth
 현재 외부 앱 실행은 안전한 승인 기반 커넥터 모드입니다. 비밀값이 설정된 서비스는 실제 API를 호출하고, 미설정 서비스는 연결 필요/설정 필요 상태를 반환합니다.
 
 - Google Calendar API: 일정 조회, 일정 생성
-- Gmail API: 메일 초안 생성
+- Gmail API: 메일 초안 생성, 승인 후 실제 발송
 - Notion API: 페이지 생성
 - Slack API: 승인 후 메시지 전송
 - Telegram Bot API: 봇 메시지 전송

@@ -75,7 +75,7 @@ const CONNECTOR_DEFINITIONS = [
     tokenProvider: 'google',
     name: 'Gmail',
     type: 'oauth',
-    actions: ['gmail.create_draft'],
+    actions: ['gmail.create_draft', 'gmail.send_message'],
     configured: () => Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
   },
   {
@@ -167,7 +167,7 @@ const OAUTH_PROVIDERS = {
 
 const ALLOWED_ACTIONS = {
   'google-calendar': ['calendar.create_event'],
-  gmail: ['gmail.create_draft'],
+  gmail: ['gmail.create_draft', 'gmail.send_message'],
   notion: ['notion.create_page'],
   slack: ['slack.post_message'],
   telegram: ['telegram.send_message'],
@@ -1157,6 +1157,7 @@ const runSchema = {
             enum: [
               'calendar.create_event',
               'gmail.create_draft',
+              'gmail.send_message',
               'notion.create_page',
               'slack.post_message',
               'telegram.send_message',
@@ -1237,10 +1238,25 @@ function statusForRisk(risk) {
   return 'needs_approval'
 }
 
-function sanitizeStep(step, index) {
+function wantsGmailSend(prompt) {
+  const text = String(prompt || '').toLowerCase()
+  const mentionsMail = /gmail|email|mail|\uBA54\uC77C|\uC774\uBA54\uC77C/.test(text)
+  const asksToSend = /send|deliver|\uBCF4\uB0B4|\uC804\uC1A1|\uBC1C\uC1A1/.test(text)
+  return mentionsMail && asksToSend && !/draft|\uCD08\uC548/.test(text)
+}
+
+function normalizeActionRisk(action, risk) {
+  if (risk === 'blocked') return risk
+  return action === 'gmail.send_message' ? 'high' : risk
+}
+
+function sanitizeStep(step, index, prompt = '') {
   const provider = ALLOWED_ACTIONS[step.provider] ? step.provider : 'notion'
-  const action = ALLOWED_ACTIONS[provider].includes(step.action) ? step.action : ALLOWED_ACTIONS[provider][0]
-  const risk = ['low', 'medium', 'high', 'blocked'].includes(step.risk) ? step.risk : 'medium'
+  let action = ALLOWED_ACTIONS[provider].includes(step.action) ? step.action : ALLOWED_ACTIONS[provider][0]
+  if (provider === 'gmail' && action === 'gmail.create_draft' && wantsGmailSend(prompt)) {
+    action = 'gmail.send_message'
+  }
+  const risk = normalizeActionRisk(action, ['low', 'medium', 'high', 'blocked'].includes(step.risk) ? step.risk : 'medium')
   return {
     id: `step_${index + 1}`,
     title: String(step.title || action),
@@ -1274,6 +1290,7 @@ function createFallbackRun(userId, prompt) {
   const lower = normalized.toLowerCase()
   const needsMeeting = normalized.includes('회의') || normalized.includes('미팅') || lower.includes('meeting')
   const needsNotice = normalized.includes('공지') || normalized.includes('알림') || normalized.includes('팀')
+  const needsMailSend = wantsGmailSend(normalized)
 
   const steps = [
     sanitizeStep(
@@ -1300,12 +1317,12 @@ function createFallbackRun(userId, prompt) {
     ),
     sanitizeStep(
       {
-        title: needsNotice ? '공지/메일 초안 생성' : '메일 초안 생성',
+        title: needsMailSend ? '메일 발송' : needsNotice ? '공지/메일 초안 생성' : '메일 초안 생성',
         provider: 'gmail',
-        action: 'gmail.create_draft',
-        detail: '사용자 검토용 메일 초안을 만듭니다.',
-        preview: `${normalized}\n\n위 내용을 바탕으로 초안을 작성합니다.`,
-        risk: 'low',
+        action: needsMailSend ? 'gmail.send_message' : 'gmail.create_draft',
+        detail: needsMailSend ? '승인 후 Gmail에서 실제 메일을 발송합니다.' : '사용자 검토용 메일 초안을 만듭니다.',
+        preview: `${normalized}\n\n${needsMailSend ? '승인 후 위 내용을 바탕으로 메일을 발송합니다.' : '위 내용을 바탕으로 초안을 작성합니다.'}`,
+        risk: needsMailSend ? 'high' : 'low',
         input: {
           title: '',
           description: '',
@@ -1319,6 +1336,7 @@ function createFallbackRun(userId, prompt) {
         },
       },
       1,
+      normalized,
     ),
     sanitizeStep(
       {
@@ -1341,6 +1359,7 @@ function createFallbackRun(userId, prompt) {
         },
       },
       2,
+      normalized,
     ),
   ]
 
@@ -1372,7 +1391,7 @@ async function createAiRun(user, prompt) {
         {
           role: 'system',
           content:
-            'You are NoClick AI. Convert Korean chat requests into safe automation tool calls. Prefer Google Calendar event creation and Gmail draft creation when the request mentions schedules, meetings, invitations, or email drafts. For calendar steps, put input.when as an ISO 8601 date-time with timezone. For Gmail drafts, put input.to as an email address; if the user says "나에게", "내게", "본인에게", "me", or "myself", use the current user email. Never execute payment, transfer, account deletion, password change, or mass personal data submission; mark those steps blocked. High-risk message sending requires approval.',
+            'You are NoClick AI. Convert Korean chat requests into safe automation tool calls. Prefer Google Calendar event creation and Gmail draft creation when the request mentions schedules, meetings, invitations, or email drafts. Use gmail.send_message only when the user explicitly asks to send/deliver an email now; otherwise use gmail.create_draft. For calendar steps, put input.when as an ISO 8601 date-time with timezone. For Gmail steps, put input.to as an email address; if the user says "나에게", "내게", "본인에게", "me", or "myself", use the current user email. Never execute payment, transfer, account deletion, password change, or mass personal data submission; mark those steps blocked. Gmail sending and high-risk message sending require approval.',
         },
         {
           role: 'user',
@@ -1398,7 +1417,7 @@ async function createAiRun(user, prompt) {
   } catch {
     return createFallbackRun(userId, prompt)
   }
-  const steps = payload.steps.map(sanitizeStep)
+  const steps = payload.steps.map((step, index) => sanitizeStep(step, index, prompt))
 
   return {
     id: `run_${crypto.randomBytes(10).toString('hex')}`,
@@ -1618,6 +1637,32 @@ function resolveGmailRecipient(store, run, step) {
   return isSelfAddressed(run.prompt) ? googleEmail || store.users[run.userId]?.email || '' : ''
 }
 
+function isValidEmailAddress(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim())
+}
+
+function isValidRecipientList(value) {
+  const recipients = String(value || '')
+    .split(/[;,]/)
+    .map((recipient) => recipient.trim())
+    .filter(Boolean)
+  return recipients.length > 0 && recipients.every(isValidEmailAddress)
+}
+
+function createRawEmail({ recipient, subject, body }) {
+  return Buffer.from(
+    [
+      `To: ${recipient}`,
+      `Subject: =?UTF-8?B?${Buffer.from(subject).toString('base64')}?=`,
+      'MIME-Version: 1.0',
+      'Content-Type: text/plain; charset="UTF-8"',
+      '',
+      body,
+    ].join('\r\n'),
+    'utf8',
+  ).toString('base64url')
+}
+
 async function executeGoogleCalendar(store, run, step) {
   const connection = await refreshGoogleTokenIfNeeded(store, run.userId)
   if (!connection?.accessToken) return executionFailure('connection_required', 'Google 연결이 필요합니다.')
@@ -1646,20 +1691,11 @@ async function executeGmailDraft(store, run, step) {
   if (!connection?.accessToken) return executionFailure('connection_required', 'Gmail 연결이 필요합니다.')
   const recipient = resolveGmailRecipient(store, run, step)
   if (!recipient) return executionFailure('recipient_required', '메일 수신자가 필요합니다.')
+  if (!isValidRecipientList(recipient)) return executionFailure('invalid_recipient', '메일 수신자 이메일 형식이 올바르지 않습니다.')
 
   const subject = step.input.subject || step.title
   const body = step.input.body || step.input.description || run.prompt
-  const raw = Buffer.from(
-    [
-      `To: ${recipient}`,
-      `Subject: =?UTF-8?B?${Buffer.from(subject).toString('base64')}?=`,
-      'MIME-Version: 1.0',
-      'Content-Type: text/plain; charset="UTF-8"',
-      '',
-      body,
-    ].join('\r\n'),
-    'utf8',
-  ).toString('base64url')
+  const raw = createRawEmail({ recipient, subject, body })
 
   const draft = await fetchJson('https://gmail.googleapis.com/gmail/v1/users/me/drafts', {
     method: 'POST',
@@ -1670,6 +1706,31 @@ async function executeGmailDraft(store, run, step) {
     body: JSON.stringify({ message: { raw } }),
   })
   return { ok: true, message: 'Gmail 초안이 생성되었습니다.', externalId: draft.id }
+}
+
+async function executeGmailSend(store, run, step) {
+  const connection = await refreshGoogleTokenIfNeeded(store, run.userId)
+  if (!connection?.accessToken) return executionFailure('connection_required', 'Gmail 연결이 필요합니다.')
+  const recipient = resolveGmailRecipient(store, run, step)
+  if (!recipient) return executionFailure('recipient_required', '메일 수신자가 필요합니다.')
+  if (!isValidRecipientList(recipient)) return executionFailure('invalid_recipient', '메일 수신자 이메일 형식이 올바르지 않습니다.')
+
+  const subject = step.input.subject || step.title
+  const body = step.input.body || step.input.description || step.preview || run.prompt
+  const message = await fetchJson('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${connection.accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ raw: createRawEmail({ recipient, subject, body }) }),
+  })
+  return {
+    ok: true,
+    message: 'Gmail 메일이 발송되었습니다.',
+    externalId: message.id,
+    threadId: message.threadId,
+  }
 }
 
 async function executeNotionPage(store, run, step) {
@@ -1769,6 +1830,7 @@ function executionFailure(code, message) {
 
 async function executeStep(store, run, step) {
   if (step.provider === 'google-calendar') return executeGoogleCalendar(store, run, step)
+  if (step.provider === 'gmail' && step.action === 'gmail.send_message') return executeGmailSend(store, run, step)
   if (step.provider === 'gmail') return executeGmailDraft(store, run, step)
   if (step.provider === 'notion') return executeNotionPage(store, run, step)
   if (step.provider === 'slack') return executeSlackMessage(store, run, step)
@@ -1783,7 +1845,12 @@ async function executeRun(store, run) {
     if (step.status === 'needs_approval') continue
 
     step.status = 'running'
-    const result = await executeStep(store, run, step)
+    let result
+    try {
+      result = await executeStep(store, run, step)
+    } catch (error) {
+      result = executionFailure('external_api_error', error instanceof Error ? error.message : '외부 API 실행 중 오류가 발생했습니다.')
+    }
     step.result = result
     step.status = result.ok ? 'done' : 'failed'
   }
