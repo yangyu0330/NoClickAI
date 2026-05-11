@@ -1,73 +1,111 @@
 # Production Readiness
 
-이 문서는 NoClick AI를 실제 서비스로 운영하기 위한 기준입니다.
+이 문서는 NoClick AI를 실제 운영 서비스로 배포하기 위한 기준입니다.
 
-## 현재 포함된 상용화 기반
+## 현재 구현된 운영 기반
 
-- 하나의 UI 코어를 Web/PWA, Android, Electron Desktop에서 공유
-- 로컬 저장/복원으로 앱 재실행 후에도 작업 상태 유지
-- Sync 서버로 여러 기기 간 히스토리, 연결 상태, 현재 계획 동기화
-- 이메일/비밀번호 계정, 로컬 세션 토큰, 워크스페이스별 동기화 인증
-- Stripe Checkout 구독 생성, Billing Portal 연결, 서명 검증 웹훅 처리
-- 인증서 경로가 제공되면 Sync 서버를 HTTPS로 직접 실행 가능
-- 개인 API Key는 기기 로컬에만 저장하고 Sync 대상에서 제외
-- AI 플래너는 서버 프록시를 통해 OpenAI Responses API를 호출하고 실패 시 규칙 기반 플래너로 대체
-- 기본 AI 모델은 `gpt-5-nano`로 설정해 계획 생성 비용을 최소화하고, 품질이 부족한 워크스페이스만 `NOCLICK_OPENAI_MODEL`로 상위 모델을 선택
-- 자동화 템플릿, 히스토리 검색, JSON 백업/복원, 제품 성과 지표 포함
-- 위험도별 승인 정책으로 메시지 발송, 일정 등록, 제출 폼 입력을 자동 실행 전에 차단
-- Android 네이티브 프로젝트와 Windows 설치 파일 빌드 파이프라인 제공
+- 하나의 React UI를 Web/PWA, Android, Windows 데스크톱에서 공유합니다.
+- Vercel HTTPS 배포와 API 라우팅이 구성되어 있습니다.
+- Neon Postgres를 사용해 계정, 세션, 연결 상태, 실행 기록, 감사 로그를 저장합니다.
+- 이메일/비밀번호 계정, 세션 토큰, 계정 삭제 기능이 있습니다.
+- `NOCLICK_ADMIN_EMAILS`에 등록된 어드민 계정은 결제 없이 사용할 수 있습니다.
+- OpenAI 호출은 서버에서 처리하며 기본 모델은 `gpt-5-nano`입니다.
+- Google OAuth로 Calendar와 Gmail을 연결할 수 있습니다.
+- Gmail 발송은 고위험 작업으로 분류되어 승인 전에는 실행되지 않습니다.
+- Notion, Slack, Telegram, KakaoTalk은 직접 API 자격증명 없이도 복사/공유 가능한 prepared fallback을 제공합니다.
+- Stripe Checkout, Billing Portal, webhook 처리 엔드포인트가 구현되어 있습니다.
+- `/privacy`, `/terms`, `/downloads`, `/data-deletion` 공개 검토 페이지가 있습니다.
+- `/v1/readiness`와 `npm run audit:production`으로 운영 준비 상태를 점검합니다.
+- Android APK/AAB와 Windows 설치 파일 빌드 경로가 준비되어 있습니다.
 
-## 운영 전 필수 보강
+## 운영 전 필수 확인
 
-1. Sync 서버 HTTPS 배포
-   - 예: Vercel Functions, Fly.io, Render, AWS Lightsail, Cloud Run
-   - `NOCLICK_SYNC_TOKEN`은 최소 32바이트 이상 랜덤 문자열 사용
-   - 운영에서는 `dev-sync-token` 사용 금지
-   - `NOCLICK_ALLOWED_ORIGIN`으로 제품 도메인만 CORS 허용
+1. Vercel Production 환경 변수
+   - `NOCLICK_PUBLIC_APP_URL`
+   - `NOCLICK_SERVER_BASE_URL`
+   - `NOCLICK_ALLOWED_ORIGIN`
+   - `NOCLICK_SYNC_TOKEN`
+   - `NOCLICK_TOKEN_ENCRYPTION_KEY`
+   - `DATABASE_URL` 또는 `POSTGRES_URL`
+   - `OPENAI_API_KEY`
+   - `NOCLICK_OPENAI_MODEL`
+   - `NOCLICK_ADMIN_EMAILS`
 
-2. 사용자 인증
-   - 현재 이메일/비밀번호 계정과 세션 토큰 포함
-   - 운영 전 이메일 인증, 비밀번호 재설정, 토큰 회전, 패스키 또는 OAuth 추가 권장
+2. Google OAuth
+   - Authorized redirect URI: `https://noclickai-zeta.vercel.app/v1/connectors/google/callback`
+   - 테스트 모드에서는 사용할 Google 계정을 test user로 추가해야 합니다.
+   - 공개 상용 서비스 전에는 Google OAuth app verification을 완료해야 합니다.
+   - 기본 공개 범위는 Gmail send-only입니다. `gmail.compose`는 제한 범위이므로 필요한 경우에만 `NOCLICK_ENABLE_GMAIL_DRAFTS=true`를 사용합니다.
 
-3. 실제 앱 어댑터
-   - Google Calendar, Gmail, Notion, Slack, Discord API는 서버에서 OAuth 토큰으로 실행
-   - 데스크톱 Browser Agent는 Playwright 실행 권한과 사용자 승인 로그 필요
-   - OpenAI API Key는 장기 저장하지 않고 사용자가 선택한 개인 키 또는 결제 계정과 분리
+3. Stripe 결제
+   - `STRIPE_SECRET_KEY`
+   - `STRIPE_PRICE_ID`
+   - `STRIPE_WEBHOOK_SECRET`
+   - `STRIPE_SUCCESS_URL`
+   - `STRIPE_CANCEL_URL`
+   - `STRIPE_PORTAL_RETURN_URL`
+   - 유료 접근을 강제하려면 `NOCLICK_REQUIRE_SUBSCRIPTION=true`를 설정합니다.
 
-4. 감사 로그
-   - 실행 계획, 승인자, 실행 시각, 대상 앱, 되돌리기 가능 여부를 서버에 저장
-   - 민감 작업은 원본 요청, AI 계획, 사용자 승인 기록을 함께 보관
+4. 선택형 직접 API 연동
+   - Notion 직접 페이지 생성을 원하면 `NOTION_CLIENT_ID`, `NOTION_CLIENT_SECRET`, `NOTION_PARENT_PAGE_ID`를 설정합니다.
+   - Slack 직접 전송을 원하면 `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET`, `SLACK_DEFAULT_CHANNEL_ID`를 설정합니다.
+   - Telegram 직접 bot 전송을 원하면 `TELEGRAM_BOT_TOKEN`, `TELEGRAM_DEFAULT_CHAT_ID`를 설정합니다.
+   - Kakao 직접 메시지 API는 별도 심사와 권한이 필요합니다.
 
-5. 배포 패키징
-   - Android: Play Console용 AAB 서명 키 관리
-   - Android build machine: JDK 21, Android SDK, Gradle cache 준비
-   - Desktop: Windows 코드 서명 인증서 적용
-   - Web/PWA: HTTPS 도메인, CSP, Service Worker 캐시 버전 관리
+5. 앱 패키지 배포
+   - Android: Android Studio에서 signed AAB를 만들고 Play Console에 업로드합니다.
+   - Windows: 신뢰 가능한 코드 서명 인증서를 electron-builder에 연결합니다.
+   - 공개 배포 전 다운로드 페이지와 GitHub release asset이 일치하는지 확인합니다.
 
-6. 결제 운영
-   - Stripe live secret key, recurring Price ID, webhook secret 설정
-   - 웹훅 이벤트는 필요한 이벤트만 수신
-   - 운영에서는 `NOCLICK_REQUIRE_SUBSCRIPTION=true`로 미구독 사용자의 AI/Sync 접근 차단
+## 검증 명령
 
-## 동기화 데이터 정책
+커밋 전 로컬 검증:
 
-Sync 대상:
+```bash
+node --check server/sync-server.mjs
+node --check scripts/production-audit.mjs
+npm audit --audit-level=high
+npm run lint
+npm run build
+git diff --check
+```
 
-- 작업 히스토리
-- OAuth 연결 상태 표시값
-- 현재 실행 계획
-- 자동화 템플릿
-- 기기 이름과 마지막 업데이트 시각
+프로덕션 배포 후 검증:
 
-Sync 제외:
+```bash
+npm run audit:production
+npx vercel@latest inspect https://noclickai-zeta.vercel.app
+npx vercel@latest logs --level error --since 1h --environment production --no-branch --no-follow
+```
 
-- 개인 LLM API Key
-- OAuth access token/refresh token
-- 결제, 송금, 주민등록번호 등 민감정보
+`npm run audit:production`은 다음을 확인합니다.
 
-## 위험도 정책
+- `/health`
+- `/privacy`, `/terms`, `/downloads`, `/data-deletion`
+- 인증된 `/v1/readiness`
+- billing status, checkout, portal의 현재 환경별 동작
+- Notion prepared-page 자동화
+- Slack prepared-message 자동화
+- Telegram prepared-message 자동화
+- KakaoTalk share fallback 자동화
+- Gmail 고위험 승인 게이트
+- 임시 계정 삭제 후 인증 토큰 무효화
 
-- Low: 요약, 초안, 후보 시간 계산은 자동 처리 가능
-- Medium: 캘린더 일정 생성, Notion 페이지 생성은 승인 필요
-- High: 메일 발송, 외부 메시지 전송, 파일 제출은 개별 승인 필요
-- Blocked: 결제, 송금, 계정 변경, 삭제 작업은 자동 실행 금지
+## 위험 등급 정책
+
+- Low: 초안 생성, 복사 가능한 텍스트 준비, 공유 fallback 준비
+- Medium: 사용자의 외부 상태를 바꿀 수 있는 작업
+- High: Gmail 발송, Slack 직접 전송, Telegram 직접 전송, Notion 직접 페이지 생성
+- Blocked: 결제, 송금, 계정 삭제, 보안 설정 변경처럼 자동 실행하면 안 되는 작업
+
+High 작업은 실행 전에 반드시 승인 상태가 되어야 하며, 승인 전 `/execute` 호출은 결과를 만들면 안 됩니다.
+
+## 현재 남은 공개 출시 블로커
+
+- Stripe live secret, recurring Price ID, webhook secret 설정
+- Google OAuth 공개 검증
+- Android signed AAB 및 Play Console 검토
+- Windows 코드 서명 인증서
+- 선택 사항: Notion/Slack/Telegram/Kakao 직접 API 전송 자격증명
+
+이 항목들이 완료되기 전에도 어드민 계정과 prepared fallback 중심의 내부 운영은 가능합니다.

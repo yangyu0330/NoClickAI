@@ -276,4 +276,5 @@ The same audit can be run from GitHub Actions through the manual `CI` workflow b
 ## Documentation
 
 - `docs/deployment.md`: production secrets, HTTPS, billing, release signing, and release checks
+- `docs/production-readiness.md`: operating checklist, verification commands, risk policy, and remaining launch blockers
 - `docs/google-oauth.md`: Google Cloud OAuth setup and Gmail/Calendar testing
