@@ -98,6 +98,10 @@ jobs:
               printf 'keyAlias=%s\n' "$ANDROID_KEY_ALIAS"
               printf 'keyPassword=%s\n' "$ANDROID_KEY_PASSWORD"
             } > android/keystore.properties
+            keytool -list \
+              -keystore android/noclickai-release.jks \
+              -storepass "$ANDROID_KEYSTORE_PASSWORD" \
+              -alias "$ANDROID_KEY_ALIAS" >/dev/null
           fi
 
       - name: Build Android release
