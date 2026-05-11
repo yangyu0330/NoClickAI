@@ -84,7 +84,7 @@ Audit the production deployment:
 npm run audit:production
 ```
 
-The audit checks `/health`, the public review pages, the downloads page, authenticated readiness, a safe chat-to-KakaoTalk share-fallback automation run, and account deletion cleanup using a temporary account.
+The audit checks `/health`, the public review pages, the downloads page, authenticated readiness, a safe chat-to-KakaoTalk share-fallback automation run, high-risk Gmail approval gating without sending email, and account deletion cleanup using a temporary account.
 
 When subscription enforcement is enabled, run the audit with an admin or paid account instead of a temporary free account:
 

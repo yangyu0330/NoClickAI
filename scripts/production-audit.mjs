@@ -217,6 +217,41 @@ async function checkKakaoShareAutomation(baseUrl, account) {
   resultLine('PASS', 'Kakao chat automation', `run=${created.body.run.id}`)
 }
 
+async function checkHighRiskApprovalGate(baseUrl, account) {
+  const headers = { Authorization: `Bearer ${account.token}` }
+  const suffix = crypto.randomUUID().slice(0, 8)
+  const recipient = `audit-${suffix}@example.com`
+  const prompt = `Send an email to ${recipient} with subject "NoClick approval audit" and body "This should require approval."`
+
+  const created = await fetchJson(`${baseUrl}/v1/chat`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ message: prompt }),
+  })
+  assert(created.response.status === 201, `/v1/chat high-risk request returned HTTP ${created.response.status}`)
+  assert(created.body?.run?.status === 'needs_approval', `High-risk run status is ${created.body?.run?.status}`)
+
+  const step = created.body.run.steps?.find((entry) => entry.provider === 'gmail')
+  assert(step, 'High-risk email request did not produce a Gmail step')
+  assert(step.action === 'gmail.send_message', `High-risk Gmail step used ${step.action}`)
+  assert(step.risk === 'high', `High-risk Gmail step risk is ${step.risk}`)
+  assert(step.status === 'needs_approval', `High-risk Gmail step status is ${step.status}`)
+  assert(step.input?.to === recipient, `High-risk Gmail recipient is ${step.input?.to}`)
+
+  const prematureExecute = await fetchJson(`${baseUrl}/v1/runs/${created.body.run.id}/execute`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ confirmHighRisk: true }),
+  })
+  assert(prematureExecute.response.ok, `/v1/runs/:id/execute high-risk gate returned HTTP ${prematureExecute.response.status}`)
+  const guardedStep = prematureExecute.body?.run?.steps?.find((entry) => entry.id === step.id)
+  assert(prematureExecute.body?.run?.status === 'needs_approval', `Premature high-risk execute changed run status to ${prematureExecute.body?.run?.status}`)
+  assert(guardedStep?.status === 'needs_approval', `Premature high-risk execute changed step status to ${guardedStep?.status}`)
+  assert(!guardedStep?.result, 'Premature high-risk execute produced a result before approval')
+
+  resultLine('PASS', 'high-risk approval gate', `run=${created.body.run.id}`)
+}
+
 async function main() {
   const { baseUrl, email, password, token } = parseArgs(process.argv)
   let account = null
@@ -244,6 +279,7 @@ async function main() {
     }
     await checkReadiness(baseUrl, account)
     await checkKakaoShareAutomation(baseUrl, account)
+    await checkHighRiskApprovalGate(baseUrl, account)
   } finally {
     if (account?.temporary) {
       await deleteAuditAccount(baseUrl, account)
