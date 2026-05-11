@@ -128,6 +128,9 @@ NOCLICK_ADMIN_EMAILS=admin@example.com
 NOCLICK_TOKEN_ENCRYPTION_KEY=replace-with-long-token-encryption-secret
 OPENAI_API_KEY=sk-...
 NOCLICK_OPENAI_MODEL=gpt-5-nano
+NOCLICK_GOOGLE_OAUTH_VERIFIED=false
+NOCLICK_ANDROID_RELEASE_SIGNED=false
+NOCLICK_WINDOWS_CODE_SIGNED=false
 ```
 
 Provider and billing variables are documented in `docs/deployment.md`.

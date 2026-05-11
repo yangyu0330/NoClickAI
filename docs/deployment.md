@@ -21,6 +21,7 @@ NOCLICK_OPENAI_MODEL=gpt-5-nano
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
 GOOGLE_REDIRECT_URI=https://api.your-domain.example/v1/connectors/google/callback
+NOCLICK_GOOGLE_OAUTH_VERIFIED=false
 # Optional: Notion prepared-page fallback works without these. Set them only for direct page creation.
 NOTION_CLIENT_ID=...
 NOTION_CLIENT_SECRET=...
@@ -45,6 +46,8 @@ STRIPE_WEBHOOK_SECRET=whsec_...
 STRIPE_SUCCESS_URL=https://app.your-domain.example?billing=success
 STRIPE_CANCEL_URL=https://app.your-domain.example?billing=cancel
 STRIPE_PORTAL_RETURN_URL=https://app.your-domain.example
+NOCLICK_ANDROID_RELEASE_SIGNED=false
+NOCLICK_WINDOWS_CODE_SIGNED=false
 ```
 
 ## HTTPS Server
@@ -111,6 +114,12 @@ Or set this in GitHub Actions when running `CI` or `Deploy Production` manually:
 - `strict_launch=true`
 
 Strict mode exits with a failure if `/v1/readiness` still reports any launch-blocking item. User-specific connector warnings and optional direct-delivery credentials do not block launch when a prepared/share fallback is available. Keep strict mode disabled for ordinary internal deployment checks while Stripe, OAuth verification, and app-signing gates are intentionally incomplete.
+
+Some external gates cannot be verified by the web server. After completing them in the provider console or signing workflow, attest them with Vercel Production environment variables:
+
+- `NOCLICK_GOOGLE_OAUTH_VERIFIED=true`: Google OAuth app verification is complete.
+- `NOCLICK_ANDROID_RELEASE_SIGNED=true`: a signed Android AAB has been built, verified, and uploaded to Play Console.
+- `NOCLICK_WINDOWS_CODE_SIGNED=true`: the Windows installer has a valid trusted Authenticode signature.
 
 ## GitHub Actions App Packages
 

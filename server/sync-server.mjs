@@ -979,6 +979,10 @@ function envPresent(name) {
   return Boolean(String(process.env[name] || '').trim())
 }
 
+function envFlag(name) {
+  return ['1', 'true', 'yes', 'on'].includes(String(process.env[name] || '').trim().toLowerCase())
+}
+
 function envConfiguredItem(name, category, label, detail = '') {
   const configured = envPresent(name)
   return readinessItem(
@@ -1229,6 +1233,10 @@ function connectorReadinessItems(store, userId) {
 }
 
 async function productionReadinessReport(store, userId) {
+  const googleOAuthVerified = envFlag('NOCLICK_GOOGLE_OAUTH_VERIFIED')
+  const androidReleaseSigned = envFlag('NOCLICK_ANDROID_RELEASE_SIGNED')
+  const windowsCodeSigned = envFlag('NOCLICK_WINDOWS_CODE_SIGNED')
+
   const items = [
     envConfiguredItem('OPENAI_API_KEY', 'core', 'OpenAI API key'),
     envConfiguredItem('DATABASE_URL', 'core', 'Postgres database'),
@@ -1255,10 +1263,14 @@ async function productionReadinessReport(store, userId) {
       'GOOGLE_OAUTH_VERIFICATION',
       'google',
       'Google OAuth public verification',
-      'manual',
-      'Google Console verification status cannot be checked from this server.',
-      'Before public launch, complete Google OAuth app verification or keep the app in Testing with explicit test users.',
-      { launchBlocking: true },
+      googleOAuthVerified ? 'ready' : 'manual',
+      googleOAuthVerified
+        ? 'Google OAuth verification is attested by NOCLICK_GOOGLE_OAUTH_VERIFIED.'
+        : 'Google Console verification status cannot be checked from this server.',
+      googleOAuthVerified
+        ? ''
+        : 'Before public launch, complete Google OAuth app verification, then set NOCLICK_GOOGLE_OAUTH_VERIFIED=true in Vercel Production.',
+      { launchBlocking: !googleOAuthVerified },
     ),
     readinessItem(
       'GMAIL_SCOPE_MODE',
@@ -1290,19 +1302,27 @@ async function productionReadinessReport(store, userId) {
       'ANDROID_RELEASE_SIGNING',
       'apps',
       'Android release signing',
-      'manual',
-      'Android Play signing cannot be verified from the web server.',
-      'Build a signed AAB in Android Studio and upload it to Play Console.',
-      { launchBlocking: true },
+      androidReleaseSigned ? 'ready' : 'manual',
+      androidReleaseSigned
+        ? 'Android signed release is attested by NOCLICK_ANDROID_RELEASE_SIGNED.'
+        : 'Android Play signing cannot be verified from the web server.',
+      androidReleaseSigned
+        ? ''
+        : 'Build and verify a signed AAB, upload it to Play Console, then set NOCLICK_ANDROID_RELEASE_SIGNED=true in Vercel Production.',
+      { launchBlocking: !androidReleaseSigned },
     ),
     readinessItem(
       'WINDOWS_CODE_SIGNING',
       'apps',
       'Windows installer code signing',
-      'manual',
-      'Windows code-signing certificate cannot be verified from the web server.',
-      'Configure electron-builder signing credentials before public Windows distribution.',
-      { launchBlocking: true },
+      windowsCodeSigned ? 'ready' : 'manual',
+      windowsCodeSigned
+        ? 'Windows code signing is attested by NOCLICK_WINDOWS_CODE_SIGNED.'
+        : 'Windows code-signing certificate cannot be verified from the web server.',
+      windowsCodeSigned
+        ? ''
+        : 'Configure electron-builder signing credentials, verify the installer signature, then set NOCLICK_WINDOWS_CODE_SIGNED=true in Vercel Production.',
+      { launchBlocking: !windowsCodeSigned },
     ),
   ]
 
