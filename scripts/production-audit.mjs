@@ -213,6 +213,7 @@ function summarizeReadiness(readiness) {
     `missing=${summary.missing ?? 0}`,
     `warning=${summary.warning ?? 0}`,
     `manual=${summary.manual ?? 0}`,
+    `launchBlocking=${summary.launchBlocking ?? 'unknown'}`,
   ].join(', ')
   resultLine(readiness.productionReady ? 'PASS' : 'WARN', 'readiness summary', counts)
 
@@ -222,13 +223,19 @@ function summarizeReadiness(readiness) {
   }
 }
 
+function launchBlockingItems(readiness) {
+  const items = readiness.items || []
+  const hasLaunchBlockingField = items.some((item) => typeof item.launchBlocking === 'boolean')
+  return items.filter((item) => (hasLaunchBlockingField ? item.launchBlocking : item.status !== 'ready'))
+}
+
 function assertStrictLaunchReady(readiness) {
   if (readiness.productionReady) {
     resultLine('PASS', 'strict launch readiness', 'productionReady=true')
     return
   }
 
-  const blockers = (readiness.items || []).filter((item) => item.status !== 'ready')
+  const blockers = launchBlockingItems(readiness)
   const blockerSummary = blockers
     .slice(0, 8)
     .map((item) => `${item.category}:${item.id}=${item.status}`)

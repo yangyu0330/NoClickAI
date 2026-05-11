@@ -110,7 +110,7 @@ Or set this in GitHub Actions when running `CI` or `Deploy Production` manually:
 
 - `strict_launch=true`
 
-Strict mode exits with a failure if `/v1/readiness` still reports any missing, warning, or manual item. Keep it disabled for ordinary internal deployment checks while Stripe, OAuth verification, and app-signing gates are intentionally incomplete.
+Strict mode exits with a failure if `/v1/readiness` still reports any launch-blocking item. User-specific connector warnings and optional direct-delivery credentials do not block launch when a prepared/share fallback is available. Keep strict mode disabled for ordinary internal deployment checks while Stripe, OAuth verification, and app-signing gates are intentionally incomplete.
 
 ## GitHub Actions App Packages
 

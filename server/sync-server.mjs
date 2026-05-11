@@ -971,8 +971,8 @@ function connectorStatuses(store, userId) {
   })
 }
 
-function readinessItem(id, category, label, status, detail = '', action = '') {
-  return { id, category, label, status, detail, action }
+function readinessItem(id, category, label, status, detail = '', action = '', options = {}) {
+  return { id, category, label, status, detail, action, launchBlocking: Boolean(options.launchBlocking) }
 }
 
 function envPresent(name) {
@@ -980,13 +980,15 @@ function envPresent(name) {
 }
 
 function envConfiguredItem(name, category, label, detail = '') {
+  const configured = envPresent(name)
   return readinessItem(
     name,
     category,
     label,
-    envPresent(name) ? 'ready' : 'missing',
-    envPresent(name) ? detail || 'Configured.' : `${name} is missing.`,
-    envPresent(name) ? '' : `Set ${name} in Vercel Production environment variables and redeploy.`,
+    configured ? 'ready' : 'missing',
+    configured ? detail || 'Configured.' : `${name} is missing.`,
+    configured ? '' : `Set ${name} in Vercel Production environment variables and redeploy.`,
+    { launchBlocking: !configured },
   )
 }
 
@@ -1084,6 +1086,7 @@ async function publicReviewReadinessItems() {
         ? `${check.url} is reachable and contains required review text.`
         : `${check.url} is missing required review text${check.missingText?.length ? `: ${check.missingText.join(', ')}` : ''}.`,
       check.ok ? '' : 'Update the public review page and redeploy.',
+      { launchBlocking: !check.ok },
     ),
   )
 }
@@ -1123,6 +1126,7 @@ async function releaseReadinessItems() {
       check.ok ? 'ready' : 'warning',
       check.ok ? `${check.url} is reachable.` : `${check.url} did not return a successful response${check.status ? ` (HTTP ${check.status})` : ''}.`,
       check.ok ? '' : 'Re-publish the release artifact or update NOCLICK_RELEASE_TAG.',
+      { launchBlocking: !check.ok },
     ),
   )
 }
@@ -1203,6 +1207,7 @@ function connectorReadinessItems(store, userId) {
             ? `Missing ${connector.missingConfig.join(', ')}.`
             : `${connector.name} server configuration is missing.`,
         connector.configured ? '' : 'Add the missing provider credentials and redeploy.',
+        { launchBlocking: !connector.configured },
       ),
     ]
 
@@ -1235,6 +1240,7 @@ async function productionReadinessReport(store, userId) {
       SYNC_TOKEN && SYNC_TOKEN !== 'dev-sync-token' ? 'ready' : 'missing',
       SYNC_TOKEN && SYNC_TOKEN !== 'dev-sync-token' ? 'Production sync token is configured.' : 'NOCLICK_SYNC_TOKEN is missing or still using dev-sync-token.',
       SYNC_TOKEN && SYNC_TOKEN !== 'dev-sync-token' ? '' : 'Set NOCLICK_SYNC_TOKEN to a long random value.',
+      { launchBlocking: !(SYNC_TOKEN && SYNC_TOKEN !== 'dev-sync-token') },
     ),
     readinessItem(
       'NOCLICK_ALLOWED_ORIGIN',
@@ -1243,6 +1249,7 @@ async function productionReadinessReport(store, userId) {
       ALLOWED_ORIGIN && ALLOWED_ORIGIN !== '*' ? 'ready' : 'warning',
       ALLOWED_ORIGIN && ALLOWED_ORIGIN !== '*' ? `Allowed origin is ${ALLOWED_ORIGIN}.` : 'CORS allows every origin.',
       ALLOWED_ORIGIN && ALLOWED_ORIGIN !== '*' ? '' : 'Set NOCLICK_ALLOWED_ORIGIN to the production app URL before public launch.',
+      { launchBlocking: !(ALLOWED_ORIGIN && ALLOWED_ORIGIN !== '*') },
     ),
     readinessItem(
       'GOOGLE_OAUTH_VERIFICATION',
@@ -1251,6 +1258,7 @@ async function productionReadinessReport(store, userId) {
       'manual',
       'Google Console verification status cannot be checked from this server.',
       'Before public launch, complete Google OAuth app verification or keep the app in Testing with explicit test users.',
+      { launchBlocking: true },
     ),
     readinessItem(
       'GMAIL_SCOPE_MODE',
@@ -1261,6 +1269,7 @@ async function productionReadinessReport(store, userId) {
         ? 'Gmail draft mode is enabled and requests gmail.compose, a restricted Gmail scope.'
         : 'Public default uses gmail.send only for Gmail execution and prepares non-send drafts inside NoClick AI.',
       ENABLE_GMAIL_DRAFTS ? 'Disable NOCLICK_ENABLE_GMAIL_DRAFTS for public launch unless restricted scope verification is planned.' : '',
+      { launchBlocking: ENABLE_GMAIL_DRAFTS },
     ),
     ...(await publicReviewReadinessItems()),
     ...(await releaseReadinessItems()),
@@ -1275,6 +1284,7 @@ async function productionReadinessReport(store, userId) {
       REQUIRE_SUBSCRIPTION ? 'ready' : 'warning',
       REQUIRE_SUBSCRIPTION ? 'Subscription enforcement is enabled.' : 'Subscription enforcement is disabled.',
       REQUIRE_SUBSCRIPTION ? '' : 'Set NOCLICK_REQUIRE_SUBSCRIPTION=true when paid access should be required.',
+      { launchBlocking: !REQUIRE_SUBSCRIPTION },
     ),
     readinessItem(
       'ANDROID_RELEASE_SIGNING',
@@ -1283,6 +1293,7 @@ async function productionReadinessReport(store, userId) {
       'manual',
       'Android Play signing cannot be verified from the web server.',
       'Build a signed AAB in Android Studio and upload it to Play Console.',
+      { launchBlocking: true },
     ),
     readinessItem(
       'WINDOWS_CODE_SIGNING',
@@ -1291,6 +1302,7 @@ async function productionReadinessReport(store, userId) {
       'manual',
       'Windows code-signing certificate cannot be verified from the web server.',
       'Configure electron-builder signing credentials before public Windows distribution.',
+      { launchBlocking: true },
     ),
   ]
 
@@ -1299,12 +1311,13 @@ async function productionReadinessReport(store, userId) {
     missing: items.filter((item) => item.status === 'missing').length,
     warning: items.filter((item) => item.status === 'warning').length,
     manual: items.filter((item) => item.status === 'manual').length,
+    launchBlocking: items.filter((item) => item.launchBlocking).length,
     total: items.length,
   }
 
   return {
     ok: true,
-    productionReady: summary.missing === 0 && summary.warning === 0 && summary.manual === 0,
+    productionReady: summary.launchBlocking === 0,
     generatedAt: new Date().toISOString(),
     publicAppUrl: PUBLIC_APP_URL,
     serverBaseUrl: SERVER_BASE_URL,

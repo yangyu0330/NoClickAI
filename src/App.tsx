@@ -139,6 +139,7 @@ type ReadinessItem = {
   status: ReadinessStatus
   detail: string
   action: string
+  launchBlocking?: boolean
 }
 
 type ReadinessReport = {
@@ -163,6 +164,7 @@ type ReadinessReport = {
     missing: number
     warning: number
     manual: number
+    launchBlocking?: number
     total: number
   }
   items: ReadinessItem[]
