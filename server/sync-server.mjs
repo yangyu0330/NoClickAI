@@ -1012,6 +1012,79 @@ async function checkHttpUrl(url) {
   }
 }
 
+async function checkHttpText(url, requiredText = []) {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 6_000)
+  try {
+    const result = await fetch(url, {
+      method: 'GET',
+      redirect: 'follow',
+      signal: controller.signal,
+    })
+    const text = await result.text()
+    const missingText = requiredText.filter((item) => !text.includes(item))
+    return {
+      ok: result.ok && missingText.length === 0,
+      status: result.status,
+      missingText,
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      status: 0,
+      error: error instanceof Error ? error.message : 'request_failed',
+      missingText: requiredText,
+    }
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+async function publicReviewReadinessItems() {
+  const pages = [
+    {
+      id: 'PRIVACY_POLICY_URL',
+      label: 'Privacy policy URL',
+      url: `${PUBLIC_APP_URL}/privacy`,
+      requiredText: ['Privacy Policy', 'Google User Data', 'Limited Use', '/data-deletion'],
+    },
+    {
+      id: 'TERMS_URL',
+      label: 'Terms of service URL',
+      url: `${PUBLIC_APP_URL}/terms`,
+      requiredText: ['Terms of Service', 'High-Risk Actions'],
+    },
+    {
+      id: 'DATA_DELETION_URL',
+      label: 'Data deletion URL',
+      url: `${PUBLIC_APP_URL}/data-deletion`,
+      requiredText: ['Data Deletion', 'Delete Your Account', 'Disconnect Google'],
+    },
+  ]
+
+  const checks = await Promise.all(
+    pages.map((page) =>
+      checkHttpText(page.url, page.requiredText).then((check) => ({
+        ...page,
+        ...check,
+      })),
+    ),
+  )
+
+  return checks.map((check) =>
+    readinessItem(
+      check.id,
+      'legal',
+      check.label,
+      check.ok ? 'ready' : 'warning',
+      check.ok
+        ? `${check.url} is reachable and contains required review text.`
+        : `${check.url} is missing required review text${check.missingText?.length ? `: ${check.missingText.join(', ')}` : ''}.`,
+      check.ok ? '' : 'Update the public review page and redeploy.',
+    ),
+  )
+}
+
 async function releaseReadinessItems() {
   const checks = await Promise.all([
     checkHttpUrl(`${PUBLIC_APP_URL}/downloads`).then((check) => ({
@@ -1137,22 +1210,7 @@ async function productionReadinessReport(store, userId) {
         : 'Public default uses gmail.send only for Gmail execution and prepares non-send drafts inside NoClick AI.',
       ENABLE_GMAIL_DRAFTS ? 'Disable NOCLICK_ENABLE_GMAIL_DRAFTS for public launch unless restricted scope verification is planned.' : '',
     ),
-    readinessItem(
-      'PRIVACY_POLICY_URL',
-      'legal',
-      'Privacy policy URL',
-      'ready',
-      `${PUBLIC_APP_URL}/privacy is available for OAuth consent screens and app review.`,
-      '',
-    ),
-    readinessItem(
-      'TERMS_URL',
-      'legal',
-      'Terms of service URL',
-      'ready',
-      `${PUBLIC_APP_URL}/terms is available for OAuth consent screens and app review.`,
-      '',
-    ),
+    ...(await publicReviewReadinessItems()),
     ...(await releaseReadinessItems()),
     ...connectorReadinessItems(store, userId),
     envConfiguredItem('STRIPE_SECRET_KEY', 'billing', 'Stripe secret key'),
