@@ -16,6 +16,14 @@
       "destination": "/api/server?__noclick_path=/v1/:path*"
     },
     {
+      "source": "/privacy",
+      "destination": "/privacy.html"
+    },
+    {
+      "source": "/terms",
+      "destination": "/terms.html"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
