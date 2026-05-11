@@ -313,7 +313,14 @@ function sendJson(response, status, body) {
 }
 
 async function sendStatic(response, url) {
-  const pathname = decodeURIComponent(url.pathname)
+  let pathname = ''
+  try {
+    pathname = decodeURIComponent(url.pathname)
+  } catch {
+    sendJson(response, 400, { error: 'invalid_path' })
+    return
+  }
+
   const safePath = pathname === '/' ? '/index.html' : pathname
   const root = resolve(WEB_DIR)
   const target = resolve(root, safePath.replace(/^\/+/, ''))

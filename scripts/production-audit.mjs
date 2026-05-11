@@ -120,6 +120,11 @@ async function checkStaticTraversalGuard(baseUrl) {
   assert(response.status !== 500, 'static traversal probe returned HTTP 500')
   assert(!text.includes('"name": "noclickai"'), 'static traversal probe exposed package.json')
   assert(!text.includes('"scripts"'), 'static traversal probe exposed package metadata')
+
+  const malformed = await fetchText(`${baseUrl}/%E0%A4%A`)
+  assert(malformed.response.status !== 500, 'malformed path probe returned HTTP 500')
+  assert(!malformed.text.includes('"name": "noclickai"'), 'malformed path probe exposed package metadata')
+
   resultLine('PASS', 'static traversal guard', `HTTP ${response.status}`)
 }
 
