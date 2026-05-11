@@ -89,7 +89,7 @@ Audit the production deployment:
 npm run audit:production
 ```
 
-The audit checks `/health`, the public review pages, the downloads page, GitHub release assets, authenticated readiness, billing API behavior, subscription access gating when enabled, safe chat-to-Notion, chat-to-Slack, chat-to-Telegram, and chat-to-KakaoTalk prepared-content automation runs, high-risk Gmail approval gating without sending email, and account deletion cleanup using a temporary account.
+The audit checks `/health`, the public review pages, the downloads page, GitHub release assets, authenticated readiness, billing API behavior, Stripe webhook signature guarding, subscription access gating when enabled, safe chat-to-Notion, chat-to-Slack, chat-to-Telegram, and chat-to-KakaoTalk prepared-content automation runs, high-risk Gmail approval gating without sending email, and account deletion cleanup using a temporary account.
 
 For a final public-launch gate, enable strict launch mode. This still runs the same functional checks, then exits with a failure if `/v1/readiness` reports any launch-blocking item:
 

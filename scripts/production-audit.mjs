@@ -326,6 +326,33 @@ async function checkBillingFlow(baseUrl, account) {
   resultLine('PASS', 'billing API flow', isAdmin ? 'admin bypass verified' : `stripeConfigured=${status.body.stripeConfigured}`)
 }
 
+async function checkStripeWebhookGuard(baseUrl, health) {
+  const unsignedWebhook = await fetchJson(`${baseUrl}/v1/billing/webhook`, {
+    method: 'POST',
+    body: JSON.stringify({
+      id: `evt_audit_${crypto.randomUUID().replaceAll('-', '')}`,
+      type: 'checkout.session.completed',
+      data: { object: {} },
+    }),
+  })
+
+  assert(unsignedWebhook.response.status === 400, `/v1/billing/webhook unsigned request returned HTTP ${unsignedWebhook.response.status}; expected 400`)
+
+  if (health.stripeWebhookConfigured) {
+    assert(
+      unsignedWebhook.body?.error === 'invalid_stripe_signature',
+      `/v1/billing/webhook unsigned request returned ${unsignedWebhook.body?.error}; expected invalid_stripe_signature`,
+    )
+  } else {
+    assert(
+      unsignedWebhook.body?.error === 'stripe_webhook_secret_required',
+      `/v1/billing/webhook unsigned request returned ${unsignedWebhook.body?.error}; expected stripe_webhook_secret_required`,
+    )
+  }
+
+  resultLine('PASS', 'Stripe webhook guard', health.stripeWebhookConfigured ? 'unsigned request rejected' : 'webhook secret required')
+}
+
 async function checkKakaoShareAutomation(baseUrl, account) {
   const headers = { Authorization: `Bearer ${account.token}` }
   const verificationText = `NoClick AI audit ${crypto.randomUUID().slice(0, 8)}`
@@ -497,6 +524,7 @@ async function main() {
     }
     const readiness = await checkReadiness(baseUrl, account)
     await checkBillingFlow(baseUrl, account)
+    await checkStripeWebhookGuard(baseUrl, health.body)
     await checkSubscriptionGate(baseUrl, health.body, account)
     await checkPreparedAutomation(baseUrl, account, 'notion', 'notion.prepare_page', 'content_prepared', 'Prepare a Notion page draft')
     await checkPreparedAutomation(baseUrl, account, 'slack', 'slack.prepare_message', 'share_prepared', 'Prepare a Slack message')

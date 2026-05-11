@@ -105,6 +105,7 @@ gh secret set VERCEL_TOKEN --repo yangyu0330/NoClickAI --body $env:VERCEL_TOKEN
 - `/privacy`, `/terms`, `/downloads`, `/data-deletion`
 - 인증된 `/v1/readiness`
 - billing status, checkout, portal의 현재 환경별 동작
+- Stripe webhook의 서명 없는 요청 거부
 - `NOCLICK_REQUIRE_SUBSCRIPTION=true`일 때 무료 계정의 paid automation API 접근 차단
 - Notion prepared-page 자동화
 - Slack prepared-message 자동화
