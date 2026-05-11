@@ -1115,6 +1115,26 @@ function envConfiguredItem(name, category, label, detail = '') {
   )
 }
 
+function envPrefixedItem(name, category, label, expectedPrefix, readyDetail = '') {
+  const value = String(process.env[name] || '').trim()
+  const configured = Boolean(value)
+  const valid = configured && value.startsWith(expectedPrefix)
+
+  return readinessItem(
+    name,
+    category,
+    label,
+    valid ? 'ready' : 'missing',
+    valid
+      ? readyDetail || 'Configured.'
+      : configured
+        ? `${name} is configured but does not look like a ${expectedPrefix} value.`
+        : `${name} is missing.`,
+    valid ? '' : `Set ${name} to a ${expectedPrefix} value in Vercel Production environment variables and redeploy.`,
+    { launchBlocking: !valid },
+  )
+}
+
 function attestedManualItem({ id, category, label, flagName, evidenceName, missingDetail, readyDetail, action }) {
   const attested = envFlag(flagName)
   const evidenceConfigured = envPresent(evidenceName)
@@ -1454,9 +1474,9 @@ async function productionReadinessReport(store, userId) {
     ...(await publicReviewReadinessItems()),
     ...(await releaseReadinessItems()),
     ...connectorReadinessItems(store, userId),
-    envConfiguredItem('STRIPE_SECRET_KEY', 'billing', 'Stripe secret key'),
-    envConfiguredItem('STRIPE_PRICE_ID', 'billing', 'Stripe recurring price'),
-    envConfiguredItem('STRIPE_WEBHOOK_SECRET', 'billing', 'Stripe webhook secret'),
+    envPrefixedItem('STRIPE_SECRET_KEY', 'billing', 'Stripe live secret key', 'sk_live_', 'Stripe live secret key is configured.'),
+    envPrefixedItem('STRIPE_PRICE_ID', 'billing', 'Stripe recurring price', 'price_', 'Stripe recurring Price ID is configured.'),
+    envPrefixedItem('STRIPE_WEBHOOK_SECRET', 'billing', 'Stripe webhook secret', 'whsec_', 'Stripe webhook signing secret is configured.'),
     readinessItem(
       'NOCLICK_REQUIRE_SUBSCRIPTION',
       'billing',

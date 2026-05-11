@@ -47,6 +47,7 @@
    - `STRIPE_SECRET_KEY`
    - `STRIPE_PRICE_ID`
    - `STRIPE_WEBHOOK_SECRET`
+   - 공개 출시 readiness에서는 `STRIPE_SECRET_KEY=sk_live_...`, `STRIPE_PRICE_ID=price_...`, `STRIPE_WEBHOOK_SECRET=whsec_...` 형식을 요구합니다.
    - `STRIPE_SUCCESS_URL`
    - `STRIPE_CANCEL_URL`
    - `STRIPE_PORTAL_RETURN_URL`

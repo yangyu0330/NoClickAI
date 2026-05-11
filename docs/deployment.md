@@ -245,6 +245,8 @@ Listen only to required events:
 
 The webhook verifies `Stripe-Signature` against `STRIPE_WEBHOOK_SECRET` using the raw request body.
 
+For public launch, Vercel Production readiness requires live-mode Stripe values: `STRIPE_SECRET_KEY` must start with `sk_live_`, `STRIPE_PRICE_ID` must start with `price_`, and `STRIPE_WEBHOOK_SECRET` must start with `whsec_`. Test-mode Stripe keys are useful locally but remain launch-blocking in production readiness.
+
 Before enabling paid access in production, run the local billing smoke test. It uses an isolated local data directory and does not call Stripe's API:
 
 ```bash
