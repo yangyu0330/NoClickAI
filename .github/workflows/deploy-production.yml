@@ -81,9 +81,7 @@ jobs:
       - name: Write deployment metadata
         shell: bash
         run: |
-          cat > server/build-meta.generated.mjs <<EOF
-          export const BUILD_COMMIT_SHA = '${{ github.sha }}'
-          EOF
+          printf "export const BUILD_COMMIT_SHA = '%s'\n" "$GITHUB_SHA" > server/build-meta.generated.mjs
 
       - name: Lint
         run: npm run lint
