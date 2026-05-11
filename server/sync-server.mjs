@@ -86,6 +86,24 @@ const MIME_TYPES = {
   '.ico': 'image/x-icon',
   '.webmanifest': 'application/manifest+json',
 }
+const CONTENT_SECURITY_POLICY = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data:",
+  "connect-src 'self' https: http://127.0.0.1:* http://localhost:*",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join('; ')
+const SECURITY_HEADERS = {
+  'Content-Security-Policy': CONTENT_SECURITY_POLICY,
+  'Cross-Origin-Opener-Policy': 'same-origin',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=()',
+}
 
 const CONNECTOR_DEFINITIONS = [
   {
@@ -277,6 +295,7 @@ async function writeStore(store) {
 
 function sendJson(response, status, body) {
   response.writeHead(status, {
+    ...SECURITY_HEADERS,
     'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
     'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-OpenAI-Key, X-Workspace-Id, Stripe-Signature',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
@@ -301,6 +320,7 @@ async function sendStatic(response, url) {
     if (!info.isFile()) throw new Error('not_file')
     const ext = target.slice(target.lastIndexOf('.'))
     response.writeHead(200, {
+      ...SECURITY_HEADERS,
       'Content-Type': MIME_TYPES[ext] || 'application/octet-stream',
       'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=31536000, immutable',
     })
@@ -308,6 +328,7 @@ async function sendStatic(response, url) {
   } catch {
     try {
       response.writeHead(200, {
+        ...SECURITY_HEADERS,
         'Content-Type': 'text/html; charset=utf-8',
         'Cache-Control': 'no-cache',
       })
@@ -320,6 +341,7 @@ async function sendStatic(response, url) {
 
 function redirect(response, location) {
   response.writeHead(302, {
+    ...SECURITY_HEADERS,
     Location: location,
     'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
   })
