@@ -91,12 +91,13 @@ jobs:
 
           if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
             printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/noclickai-release.jks
-            cat > android/keystore.properties <<EOF
-          storeFile=noclickai-release.jks
-          storePassword=$ANDROID_KEYSTORE_PASSWORD
-          keyAlias=$ANDROID_KEY_ALIAS
-          keyPassword=$ANDROID_KEY_PASSWORD
-          EOF
+            test -s android/noclickai-release.jks || { echo "Decoded Android keystore is empty"; exit 1; }
+            {
+              printf 'storeFile=noclickai-release.jks\n'
+              printf 'storePassword=%s\n' "$ANDROID_KEYSTORE_PASSWORD"
+              printf 'keyAlias=%s\n' "$ANDROID_KEY_ALIAS"
+              printf 'keyPassword=%s\n' "$ANDROID_KEY_PASSWORD"
+            } > android/keystore.properties
           fi
 
       - name: Build Android release
