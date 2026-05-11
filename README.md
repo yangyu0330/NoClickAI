@@ -74,6 +74,14 @@ npm run lint
 npm run build
 ```
 
+Audit the production deployment:
+
+```bash
+npm run audit:production
+```
+
+The audit checks `/health`, the public review pages, the downloads page, authenticated readiness, and account deletion cleanup using a temporary account.
+
 ## Environment
 
 Copy `.env.example` to `.env` for local development and fill in the values that match your environment.
@@ -226,6 +234,12 @@ After signing in, call:
 
 ```bash
 curl -H "Authorization: Bearer <session-token>" https://noclickai-zeta.vercel.app/v1/readiness
+```
+
+Or run the bundled production audit:
+
+```bash
+npm run audit:production
 ```
 
 ## Documentation

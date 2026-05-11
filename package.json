@@ -11,6 +11,7 @@
     "dev": "vite --host 0.0.0.0",
     "dev:web": "vite --host 0.0.0.0",
     "sync:server": "node --env-file-if-exists=.env server/sync-server.mjs",
+    "audit:production": "node scripts/production-audit.mjs",
     "dev:full": "concurrently -n web,sync \"npm:dev:web\" \"npm:sync:server\"",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
