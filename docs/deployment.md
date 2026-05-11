@@ -95,8 +95,11 @@ Add these GitHub repository secrets before using it:
 - `VERCEL_TOKEN`
 - `VERCEL_ORG_ID`
 - `VERCEL_PROJECT_ID`
+- `VERCEL_DEPLOY_HOOK_URL`
 
 The current linked Vercel project IDs are visible in `.vercel/project.json` on a linked local checkout. Do not commit a Vercel token.
+
+`VERCEL_DEPLOY_HOOK_URL` is optional when `VERCEL_TOKEN` is valid, but keep it configured for fallback deployments. If the Vercel CLI token is missing or expired and `allow_git_integration_fallback=true`, the workflow triggers this deploy hook first, then waits for `/health.commitSha` to report the workflow commit.
 
 Optional audit secrets:
 
