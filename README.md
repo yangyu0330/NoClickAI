@@ -117,6 +117,12 @@ $env:NOCLICK_AUDIT_PASSWORD='...'
 npm run audit:production
 ```
 
+To verify that the supplied audit account is the configured admin account and bypasses checkout, require admin mode:
+
+```bash
+npm run audit:production -- --require-admin
+```
+
 ## Environment
 
 Copy `.env.example` to `.env` for local development and fill in the values that match your environment.
@@ -298,6 +304,7 @@ Optional audit environment variables:
 - `NOCLICK_AUDIT_BASE_URL`: target deployment URL
 - `NOCLICK_AUDIT_EMAIL` and `NOCLICK_AUDIT_PASSWORD`: existing admin/pro account for paid-launch audits
 - `NOCLICK_AUDIT_TOKEN`: existing session token when password login should not be used
+- `NOCLICK_AUDIT_REQUIRE_ADMIN`: set to `true` to fail unless the audit account has admin billing bypass
 
 The same audit can be run from GitHub Actions through the manual `CI` workflow by enabling `run_production_audit`. Store audit credentials as repository secrets named `NOCLICK_AUDIT_EMAIL`, `NOCLICK_AUDIT_PASSWORD`, or `NOCLICK_AUDIT_TOKEN`.
 

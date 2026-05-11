@@ -25,6 +25,11 @@ on:
         required: false
         type: boolean
         default: false
+      require_admin_audit:
+        description: Require the audit account to have admin billing bypass
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   verify:
@@ -85,4 +90,5 @@ jobs:
           NOCLICK_AUDIT_EMAIL: ${{ secrets.NOCLICK_AUDIT_EMAIL }}
           NOCLICK_AUDIT_PASSWORD: ${{ secrets.NOCLICK_AUDIT_PASSWORD }}
           NOCLICK_AUDIT_TOKEN: ${{ secrets.NOCLICK_AUDIT_TOKEN }}
+          NOCLICK_AUDIT_REQUIRE_ADMIN: ${{ inputs.require_admin_audit }}
           NOCLICK_AUDIT_STRICT_LAUNCH: ${{ inputs.strict_launch }}

@@ -83,6 +83,7 @@ git diff --check
 ```bash
 npm run audit:production
 npm run audit:production -- --strict-launch
+npm run audit:production -- --require-admin
 npx vercel@latest inspect https://noclickai-zeta.vercel.app
 npx vercel@latest logs --level error --since 1h --environment production --no-branch --no-follow
 ```
@@ -108,6 +109,7 @@ gh secret set VERCEL_TOKEN --repo yangyu0330/NoClickAI --body $env:VERCEL_TOKEN
 - 정적 파일 경로 traversal 차단
 - 인증된 `/v1/readiness`
 - billing status, checkout, portal의 현재 환경별 동작
+- `--require-admin` 또는 `NOCLICK_AUDIT_REQUIRE_ADMIN=true`일 때 어드민 결제 우회 계정 여부
 - Stripe webhook의 서명 없는 요청 거부
 - `NOCLICK_REQUIRE_SUBSCRIPTION=true`일 때 무료 계정의 paid automation API 접근 차단
 - Notion prepared-page 자동화

@@ -54,6 +54,8 @@ const OPENAI_REQUEST_TIMEOUT_MS = Number(process.env.NOCLICK_OPENAI_TIMEOUT_MS |
 const STORE_ID = 'default'
 const STORE_TABLE = 'noclick_store'
 const STORAGE_TARGET = DATABASE_URL ? `postgres:${STORE_TABLE}/${STORE_ID}` : DATA_FILE
+const STORE_META = Symbol('noclickStoreMeta')
+const STORE_BUCKETS = ['workspaces', 'users', 'sessions', 'billingEvents', 'connections', 'runs', 'auditLogs', 'oauthStates']
 const GMAIL_ACTIONS = ENABLE_GMAIL_DRAFTS
   ? ['gmail.prepare_message', 'gmail.create_draft', 'gmail.send_message']
   : ['gmail.prepare_message', 'gmail.send_message']
@@ -246,6 +248,57 @@ function normalizeStore(store = {}) {
   }
 }
 
+function cloneStore(store) {
+  return JSON.parse(JSON.stringify(normalizeStore(store)))
+}
+
+function attachStoreMeta(store, version) {
+  Object.defineProperty(store, STORE_META, {
+    value: {
+      version,
+      base: cloneStore(store),
+    },
+    enumerable: false,
+    configurable: true,
+  })
+  return store
+}
+
+function valuesEqual(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right)
+}
+
+function mergeBucket(currentBucket = {}, incomingBucket = {}, baseBucket = {}) {
+  const merged = { ...currentBucket }
+  const keys = new Set([...Object.keys(baseBucket), ...Object.keys(incomingBucket)])
+
+  for (const key of keys) {
+    const incomingHas = Object.hasOwn(incomingBucket, key)
+    const baseHas = Object.hasOwn(baseBucket, key)
+    const incomingValue = incomingBucket[key]
+    const baseValue = baseBucket[key]
+    const changedByIncoming = incomingHas !== baseHas || !valuesEqual(incomingValue, baseValue)
+
+    if (!changedByIncoming) continue
+    if (incomingHas) merged[key] = incomingValue
+    else delete merged[key]
+  }
+
+  return merged
+}
+
+function mergeStores(current, incoming, base) {
+  const merged = normalizeStore(current)
+  const normalizedIncoming = normalizeStore(incoming)
+  const normalizedBase = normalizeStore(base)
+
+  for (const bucket of STORE_BUCKETS) {
+    merged[bucket] = mergeBucket(merged[bucket], normalizedIncoming[bucket], normalizedBase[bucket])
+  }
+
+  return merged
+}
+
 function getPostgresClient() {
   if (!DATABASE_URL) return null
   postgresClient ||= neon(DATABASE_URL)
@@ -261,8 +314,15 @@ async function ensurePostgresStore() {
     CREATE TABLE IF NOT EXISTS noclick_store (
       id text PRIMARY KEY,
       data jsonb NOT NULL,
+      version bigint NOT NULL DEFAULT 0,
       updated_at timestamptz NOT NULL DEFAULT now()
     )
+  `
+  await sql`ALTER TABLE noclick_store ADD COLUMN IF NOT EXISTS version bigint NOT NULL DEFAULT 0`
+  await sql`
+    INSERT INTO noclick_store (id, data)
+    VALUES (${STORE_ID}, ${JSON.stringify(normalizeStore())}::jsonb)
+    ON CONFLICT (id) DO NOTHING
   `
   postgresStoreReady = true
 }
@@ -270,20 +330,60 @@ async function ensurePostgresStore() {
 async function readPostgresStore() {
   await ensurePostgresStore()
   const sql = getPostgresClient()
-  const rows = await sql`SELECT data FROM noclick_store WHERE id = ${STORE_ID} LIMIT 1`
-  return normalizeStore(rows[0]?.data || {})
+  const rows = await sql`SELECT data, version FROM noclick_store WHERE id = ${STORE_ID} LIMIT 1`
+  return attachStoreMeta(normalizeStore(rows[0]?.data || {}), Number(rows[0]?.version || 0))
+}
+
+async function tryUpdatePostgresStore(store, expectedVersion) {
+  const sql = getPostgresClient()
+  const rows = await sql`
+    UPDATE noclick_store
+    SET data = ${JSON.stringify(normalizeStore(store))}::jsonb,
+        version = version + 1,
+        updated_at = now()
+    WHERE id = ${STORE_ID}
+      AND version = ${expectedVersion}
+    RETURNING version
+  `
+  return rows[0] ? Number(rows[0].version) : null
 }
 
 async function writePostgresStore(store) {
   await ensurePostgresStore()
   const sql = getPostgresClient()
   const normalized = normalizeStore(store)
-  await sql`
+
+  if (store?.[STORE_META]) {
+    let candidate = normalized
+    let expectedVersion = store[STORE_META].version
+    let base = store[STORE_META].base
+
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const nextVersion = await tryUpdatePostgresStore(candidate, expectedVersion)
+      if (nextVersion !== null) {
+        attachStoreMeta(candidate, nextVersion)
+        return
+      }
+
+      const current = await readPostgresStore()
+      candidate = mergeStores(current, candidate, base)
+      expectedVersion = current[STORE_META].version
+      base = current[STORE_META].base
+    }
+
+    const error = new Error('store_write_conflict')
+    error.statusCode = 409
+    throw error
+  }
+
+  const rows = await sql`
     INSERT INTO noclick_store (id, data, updated_at)
     VALUES (${STORE_ID}, ${JSON.stringify(normalized)}::jsonb, now())
     ON CONFLICT (id)
-    DO UPDATE SET data = EXCLUDED.data, updated_at = now()
+    DO UPDATE SET data = EXCLUDED.data, version = noclick_store.version + 1, updated_at = now()
+    RETURNING version
   `
+  attachStoreMeta(normalized, Number(rows[0]?.version || 0))
 }
 
 async function readStore() {

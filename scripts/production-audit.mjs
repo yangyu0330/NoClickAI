@@ -16,6 +16,7 @@ function parseArgs(argv) {
     password: process.env.NOCLICK_AUDIT_PASSWORD || '',
     token: process.env.NOCLICK_AUDIT_TOKEN || '',
     expectedCommit: process.env.NOCLICK_AUDIT_EXPECTED_COMMIT || '',
+    requireAdmin: parseBoolean(process.env.NOCLICK_AUDIT_REQUIRE_ADMIN),
     strictLaunch: parseBoolean(process.env.NOCLICK_AUDIT_STRICT_LAUNCH),
   }
 
@@ -64,6 +65,18 @@ function parseArgs(argv) {
     }
     if (arg.startsWith('--expected-commit=')) {
       args.expectedCommit = arg.slice('--expected-commit='.length)
+      continue
+    }
+    if (arg === '--require-admin') {
+      args.requireAdmin = true
+      continue
+    }
+    if (arg === '--no-require-admin') {
+      args.requireAdmin = false
+      continue
+    }
+    if (arg.startsWith('--require-admin=')) {
+      args.requireAdmin = parseBoolean(arg.slice('--require-admin='.length))
       continue
     }
     if (arg === '--strict-launch') {
@@ -367,7 +380,7 @@ async function checkReadiness(baseUrl, account) {
   return body
 }
 
-async function checkBillingFlow(baseUrl, account) {
+async function checkBillingFlow(baseUrl, account, options = {}) {
   const headers = { Authorization: `Bearer ${account.token}` }
   const status = await fetchJson(`${baseUrl}/v1/billing/status`, { headers })
 
@@ -379,6 +392,12 @@ async function checkBillingFlow(baseUrl, account) {
   assert(typeof status.body.portalReady === 'boolean', '/v1/billing/status did not include portalReady')
 
   const isAdmin = Boolean(status.body.user.isAdmin || status.body.user.billingPlan === 'admin')
+  if (options.requireAdmin) {
+    assert(isAdmin, `audit account ${status.body.user.email} is not an admin billing-bypass account`)
+    assert(status.body.user.subscriptionStatus === 'active', `admin audit account subscriptionStatus is ${status.body.user.subscriptionStatus}; expected active`)
+    resultLine('PASS', 'admin entitlement', `${status.body.user.email} has admin billing bypass`)
+  }
+
   const checkout = await fetchJson(`${baseUrl}/v1/billing/checkout`, {
     method: 'POST',
     headers,
@@ -582,10 +601,14 @@ async function checkHighRiskApprovalGate(baseUrl, account) {
 }
 
 async function main() {
-  const { baseUrl, email, password, token, expectedCommit, strictLaunch } = parseArgs(process.argv)
+  const { baseUrl, email, password, token, expectedCommit, requireAdmin, strictLaunch } = parseArgs(process.argv)
   let account = null
+  let auditFailed = false
 
   console.log(`NoClick AI production audit: ${baseUrl}`)
+  if (requireAdmin) {
+    resultLine('INFO', 'admin audit mode', 'enabled')
+  }
   if (strictLaunch) {
     resultLine('INFO', 'strict launch mode', 'enabled')
   }
@@ -612,7 +635,7 @@ async function main() {
       account = { ...(await createAuditAccount(baseUrl)), temporary: true }
     }
     const readiness = await checkReadiness(baseUrl, account)
-    await checkBillingFlow(baseUrl, account)
+    await checkBillingFlow(baseUrl, account, { requireAdmin })
     await checkStripeWebhookGuard(baseUrl, health.body)
     await checkSubscriptionGate(baseUrl, health.body, account)
     await checkPreparedAutomation(baseUrl, account, 'notion', 'notion.prepare_page', 'content_prepared', 'Prepare a Notion page draft')
@@ -623,9 +646,18 @@ async function main() {
     if (strictLaunch) {
       assertStrictLaunchReady(readiness)
     }
+  } catch (error) {
+    auditFailed = true
+    throw error
   } finally {
     if (account?.temporary) {
-      await deleteAuditAccount(baseUrl, account)
+      try {
+        await deleteAuditAccount(baseUrl, account)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        if (!auditFailed) throw error
+        resultLine('WARN', 'temporary account cleanup', message)
+      }
     }
   }
 }
