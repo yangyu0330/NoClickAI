@@ -105,6 +105,7 @@ gh secret set VERCEL_TOKEN --repo yangyu0330/NoClickAI --body $env:VERCEL_TOKEN
 `npm run audit:production`은 다음을 확인합니다.
 
 - `/health`
+- production security headers, including HSTS, CSP frame-ancestors, nosniff, and restrictive permissions
 - `/health.commitSha`와 현재 git `HEAD`의 배포 일치 여부
 - `/` 앱 셸, JS/CSS 번들, PWA manifest, service worker
 - service worker의 인증 API 응답 캐시 제외

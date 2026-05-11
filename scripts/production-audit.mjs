@@ -131,6 +131,22 @@ function resultLine(status, label, detail = '') {
   console.log(`${status.padEnd(7)} ${label}${suffix}`)
 }
 
+function checkSecurityHeaders(response, label, options = {}) {
+  const header = (name) => response.headers.get(name) || ''
+  assert(header('content-security-policy').includes("frame-ancestors 'none'"), `${label} is missing CSP frame-ancestors`)
+  assert(header('cross-origin-opener-policy') === 'same-origin', `${label} is missing COOP same-origin`)
+  assert(header('referrer-policy') === 'strict-origin-when-cross-origin', `${label} is missing strict referrer policy`)
+  assert(header('x-content-type-options') === 'nosniff', `${label} is missing X-Content-Type-Options nosniff`)
+  assert(header('x-frame-options') === 'DENY', `${label} is missing X-Frame-Options DENY`)
+  assert(header('permissions-policy').includes('camera=()'), `${label} is missing restrictive Permissions-Policy`)
+
+  if (options.requireHsts) {
+    const hsts = header('strict-transport-security').toLowerCase()
+    assert(hsts.includes('max-age=') && hsts.includes('includesubdomains'), `${label} is missing HSTS includeSubDomains`)
+  }
+  resultLine('PASS', `${label} security headers`)
+}
+
 function extractAssetPaths(html, attribute) {
   const pattern = new RegExp(`${attribute}="([^"]+)"`, 'g')
   return [...html.matchAll(pattern)].map((match) => match[1]).filter((value) => value.startsWith('/'))
@@ -210,6 +226,7 @@ async function checkPublicPage(baseUrl, path, requiredText) {
 async function checkAppShell(baseUrl) {
   const { response, text } = await fetchText(`${baseUrl}/`)
   assert(response.ok, `/ returned HTTP ${response.status}`)
+  checkSecurityHeaders(response, '/', { requireHsts: baseUrl.startsWith('https://') })
   assert(text.includes('<title>NoClick AI</title>'), '/ is missing NoClick AI title')
   assert(text.includes('<div id="root"></div>'), '/ is missing React root')
   assert(text.includes('manifest.webmanifest'), '/ is missing PWA manifest link')
@@ -654,6 +671,7 @@ async function main() {
     const health = await fetchJson(`${baseUrl}/health`)
     assert(health.response.ok && health.body?.ok, `/health returned HTTP ${health.response.status}`)
     assert(health.body.auth && health.body.chat && health.body.connectors && health.body.billing, '/health is missing expected service flags')
+    checkSecurityHeaders(health.response, '/health', { requireHsts: baseUrl.startsWith('https://') })
     resultLine('PASS', '/health', `model=${health.body.model}, storage=${health.body.storage}`)
     checkDeploymentCommit(health.body, { expectedCommit, strictLaunch })
 

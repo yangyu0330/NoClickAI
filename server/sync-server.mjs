@@ -116,6 +116,7 @@ const SECURITY_HEADERS = {
   'Content-Security-Policy': CONTENT_SECURITY_POLICY,
   'Cross-Origin-Opener-Policy': 'same-origin',
   'Referrer-Policy': 'strict-origin-when-cross-origin',
+  'Strict-Transport-Security': 'max-age=63072000; includeSubDomains; preload',
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=()',
