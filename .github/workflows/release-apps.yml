@@ -93,8 +93,12 @@ jobs:
         shell: bash
         run: |
           mkdir -p artifacts/android
-          cp android/app/build/outputs/apk/release/app-release.apk "artifacts/android/NoClickAI-Android-${{ inputs.release_tag }}.apk"
-          cp android/app/build/outputs/bundle/release/app-release.aab "artifacts/android/NoClickAI-Android-${{ inputs.release_tag }}.aab"
+          apk_path="$(find android/app/build/outputs/apk/release -type f -name '*.apk' | head -n 1)"
+          aab_path="$(find android/app/build/outputs/bundle/release -type f -name '*.aab' | head -n 1)"
+          test -n "$apk_path" || { echo "Android release APK was not found"; exit 1; }
+          test -n "$aab_path" || { echo "Android release AAB was not found"; exit 1; }
+          cp "$apk_path" "artifacts/android/NoClickAI-Android-${{ inputs.release_tag }}.apk"
+          cp "$aab_path" "artifacts/android/NoClickAI-Android-${{ inputs.release_tag }}.aab"
           (cd artifacts/android && sha256sum * > SHA256SUMS-android.txt)
 
       - name: Upload Android artifacts
