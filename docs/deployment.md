@@ -80,6 +80,26 @@ The public web app also exposes the same release links at `/downloads`.
 
 `GET /v1/readiness` performs HEAD checks against `/downloads`, the GitHub release page, and the expected APK/AAB/Windows/checksum artifacts for `NOCLICK_RELEASE_TAG`.
 
+## GitHub Actions Production Deploy
+
+The repository includes a manual `Deploy Production` workflow. It verifies the app, pulls Vercel Production settings, builds with Vercel, deploys prebuilt output to Production, inspects the deployment, runs `npm run audit:production`, and checks recent Production error logs.
+
+Add these GitHub repository secrets before using it:
+
+- `VERCEL_TOKEN`
+- `VERCEL_ORG_ID`
+- `VERCEL_PROJECT_ID`
+
+The current linked Vercel project IDs are visible in `.vercel/project.json` on a linked local checkout. Do not commit a Vercel token.
+
+Optional audit secrets:
+
+- `NOCLICK_AUDIT_EMAIL`
+- `NOCLICK_AUDIT_PASSWORD`
+- `NOCLICK_AUDIT_TOKEN`
+
+Use an admin or paid audit account when `NOCLICK_REQUIRE_SUBSCRIPTION=true`. If subscription enforcement is disabled, the audit can create and delete a temporary account.
+
 ## Accounts
 
 The server provides:
