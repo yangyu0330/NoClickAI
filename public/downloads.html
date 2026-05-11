@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NoClick AI Downloads</title>
+    <style>
+      :root {
+        color: #111827;
+        background: #f8fafc;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 32px 16px;
+      }
+      main {
+        width: min(860px, 100%);
+        margin: 0 auto;
+        padding: 28px;
+        border: 1px solid #e4e7ec;
+        border-radius: 8px;
+        background: #ffffff;
+        box-shadow: 0 12px 32px rgba(17, 24, 39, 0.06);
+      }
+      a {
+        color: #2563eb;
+        font-weight: 800;
+        text-decoration: none;
+      }
+      h1 {
+        margin: 18px 0 4px;
+        font-size: 32px;
+      }
+      h2 {
+        margin: 24px 0 8px;
+        font-size: 18px;
+      }
+      p,
+      li {
+        color: #667085;
+        line-height: 1.65;
+      }
+      .date {
+        font-size: 13px;
+      }
+      .download-list {
+        display: grid;
+        gap: 12px;
+        margin: 20px 0;
+        padding: 0;
+        list-style: none;
+      }
+      .download-list li {
+        padding: 14px;
+        border: 1px solid #e4e7ec;
+        border-radius: 8px;
+        background: #f9fafb;
+      }
+      .warning {
+        border-left: 4px solid #f59e0b;
+        padding-left: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <a href="/">NoClick AI</a>
+      <h1>Downloads</h1>
+      <p class="date">Current build: v0.1.0-internal.1</p>
+
+      <h2>Installers</h2>
+      <ul class="download-list">
+        <li>
+          <a href="https://github.com/yangyu0330/NoClickAI/releases/download/v0.1.0-internal.1/NoClickAI-Android-v0.1.0-internal.1.apk">Android APK</a>
+          <p>Signed Android sideload build for device testing.</p>
+        </li>
+        <li>
+          <a href="https://github.com/yangyu0330/NoClickAI/releases/download/v0.1.0-internal.1/NoClickAI-Windows-Setup-v0.1.0-internal.1.exe">Windows Installer</a>
+          <p>Windows NSIS installer for desktop testing.</p>
+        </li>
+        <li>
+          <a href="https://github.com/yangyu0330/NoClickAI/releases/download/v0.1.0-internal.1/NoClickAI-Android-v0.1.0-internal.1.aab">Android AAB</a>
+          <p>Play Console upload artifact.</p>
+        </li>
+        <li>
+          <a href="https://github.com/yangyu0330/NoClickAI/releases/download/v0.1.0-internal.1/SHA256SUMS.txt">SHA256 checksums</a>
+          <p>Checksums for the release artifacts.</p>
+        </li>
+      </ul>
+
+      <h2>Status</h2>
+      <p class="warning">This is an internal test release. The Windows installer is signed with a local test certificate and is not publicly trusted until a CA-issued code-signing certificate is applied.</p>
+      <p>Public launch still requires Google OAuth verification, Stripe live billing configuration, and production credentials for Notion, Slack, Telegram, and Kakao.</p>
+    </main>
+  </body>
+</html>

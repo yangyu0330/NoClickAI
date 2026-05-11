@@ -65,6 +65,14 @@ After signing in, `GET /v1/readiness` returns a production readiness checklist w
 
 For packaged Android and Windows builds, set `VITE_NOCLICK_SERVER_BASE_URL` before `npm run android:sync` or `npm run desktop:dist`. Browser deployments can use same-origin API routing, but packaged apps run from a local WebView or `file://` origin and need a production HTTPS API default.
 
+The current internal test installers are published at:
+
+```text
+https://github.com/yangyu0330/NoClickAI/releases/tag/v0.1.0-internal.1
+```
+
+The public web app also exposes the same release links at `/downloads`.
+
 ## Accounts
 
 The server provides:

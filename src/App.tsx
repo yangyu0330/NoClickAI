@@ -981,6 +981,7 @@ function AppShell() {
         </aside>
       </section>
       <footer className="app-footer">
+        <a href="/downloads">Downloads</a>
         <a href="/privacy">Privacy Policy</a>
         <a href="/terms">Terms of Service</a>
       </footer>

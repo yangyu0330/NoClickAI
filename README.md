@@ -98,6 +98,13 @@ Public review pages:
 
 - Privacy Policy: `/privacy`
 - Terms of Service: `/terms`
+- Downloads: `/downloads`
+
+Current internal release:
+
+- GitHub Release: `https://github.com/yangyu0330/NoClickAI/releases/tag/v0.1.0-internal.1`
+- Android APK: `NoClickAI-Android-v0.1.0-internal.1.apk`
+- Windows Installer: `NoClickAI-Windows-Setup-v0.1.0-internal.1.exe`
 
 `POST /v1/plan`은 추가로 `X-OpenAI-Key` 헤더를 사용합니다. 이 값은 서버에 저장하지 않습니다.
 
