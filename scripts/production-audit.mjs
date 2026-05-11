@@ -189,6 +189,52 @@ async function checkReadiness(baseUrl, account) {
   summarizeReadiness(body)
 }
 
+async function checkBillingFlow(baseUrl, account) {
+  const headers = { Authorization: `Bearer ${account.token}` }
+  const status = await fetchJson(`${baseUrl}/v1/billing/status`, { headers })
+
+  assert(status.response.ok, `/v1/billing/status returned HTTP ${status.response.status}`)
+  assert(status.body?.ok, '/v1/billing/status did not return ok=true')
+  assert(status.body?.user?.email, '/v1/billing/status did not return a user')
+  assert(typeof status.body.stripeConfigured === 'boolean', '/v1/billing/status did not include stripeConfigured')
+  assert(typeof status.body.checkoutReady === 'boolean', '/v1/billing/status did not include checkoutReady')
+  assert(typeof status.body.portalReady === 'boolean', '/v1/billing/status did not include portalReady')
+
+  const isAdmin = Boolean(status.body.user.isAdmin || status.body.user.billingPlan === 'admin')
+  const checkout = await fetchJson(`${baseUrl}/v1/billing/checkout`, {
+    method: 'POST',
+    headers,
+  })
+
+  if (isAdmin) {
+    assert(checkout.response.ok && checkout.body?.admin === true, 'admin checkout should be bypassed without Stripe')
+  } else if (status.body.stripeConfigured) {
+    assert(checkout.response.ok, `/v1/billing/checkout returned HTTP ${checkout.response.status}`)
+    assert(checkout.body?.url, '/v1/billing/checkout did not return a checkout URL')
+  } else {
+    assert(checkout.response.status === 400, `/v1/billing/checkout without Stripe returned HTTP ${checkout.response.status}`)
+    assert(checkout.body?.error === 'stripe_not_configured', `/v1/billing/checkout returned ${checkout.body?.error}`)
+  }
+
+  const portal = await fetchJson(`${baseUrl}/v1/billing/portal`, {
+    method: 'POST',
+    headers,
+  })
+
+  if (isAdmin) {
+    assert(portal.response.status === 400, `/v1/billing/portal for admin returned HTTP ${portal.response.status}`)
+    assert(portal.body?.error === 'admin_billing_not_required', `/v1/billing/portal for admin returned ${portal.body?.error}`)
+  } else if (portal.response.ok) {
+    assert(portal.body?.url, '/v1/billing/portal did not return a portal URL')
+  } else {
+    const expectedError = status.body.stripeConfigured ? 'stripe_customer_missing' : 'stripe_not_configured'
+    assert(portal.response.status === 400, `/v1/billing/portal returned HTTP ${portal.response.status}`)
+    assert(portal.body?.error === expectedError, `/v1/billing/portal returned ${portal.body?.error}`)
+  }
+
+  resultLine('PASS', 'billing API flow', isAdmin ? 'admin bypass verified' : `stripeConfigured=${status.body.stripeConfigured}`)
+}
+
 async function checkKakaoShareAutomation(baseUrl, account) {
   const headers = { Authorization: `Bearer ${account.token}` }
   const verificationText = `NoClick AI audit ${crypto.randomUUID().slice(0, 8)}`
@@ -356,6 +402,7 @@ async function main() {
       account = { ...(await createAuditAccount(baseUrl)), temporary: true }
     }
     await checkReadiness(baseUrl, account)
+    await checkBillingFlow(baseUrl, account)
     await checkPreparedAutomation(baseUrl, account, 'notion', 'notion.prepare_page', 'content_prepared', 'Prepare a Notion page draft')
     await checkPreparedAutomation(baseUrl, account, 'slack', 'slack.prepare_message', 'share_prepared', 'Prepare a Slack message')
     await checkTelegramShareAutomation(baseUrl, account)

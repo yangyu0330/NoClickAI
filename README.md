@@ -89,7 +89,7 @@ Audit the production deployment:
 npm run audit:production
 ```
 
-The audit checks `/health`, the public review pages, the downloads page, authenticated readiness, safe chat-to-Notion, chat-to-Slack, chat-to-Telegram, and chat-to-KakaoTalk prepared-content automation runs, high-risk Gmail approval gating without sending email, and account deletion cleanup using a temporary account.
+The audit checks `/health`, the public review pages, the downloads page, authenticated readiness, billing API behavior, safe chat-to-Notion, chat-to-Slack, chat-to-Telegram, and chat-to-KakaoTalk prepared-content automation runs, high-risk Gmail approval gating without sending email, and account deletion cleanup using a temporary account.
 
 When subscription enforcement is enabled, run the audit with an admin or paid account instead of a temporary free account:
 
