@@ -23,6 +23,7 @@ GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
 GOOGLE_REDIRECT_URI=https://api.your-domain.example/v1/connectors/google/callback
 NOCLICK_GOOGLE_OAUTH_VERIFIED=false
+NOCLICK_GOOGLE_OAUTH_VERIFICATION_EVIDENCE=
 # Optional: Notion prepared-page fallback works without these. Set them only for direct page creation.
 NOTION_CLIENT_ID=...
 NOTION_CLIENT_SECRET=...
@@ -48,7 +49,9 @@ STRIPE_SUCCESS_URL=https://app.your-domain.example?billing=success
 STRIPE_CANCEL_URL=https://app.your-domain.example?billing=cancel
 STRIPE_PORTAL_RETURN_URL=https://app.your-domain.example
 NOCLICK_ANDROID_RELEASE_SIGNED=false
+NOCLICK_ANDROID_RELEASE_EVIDENCE=
 NOCLICK_WINDOWS_CODE_SIGNED=false
+NOCLICK_WINDOWS_CODE_SIGNING_EVIDENCE=
 ```
 
 ## HTTPS Server
@@ -70,7 +73,7 @@ npm run sync:server
 
 `GET /health` returns the active protocol, AI model, account support, billing support, and whether Stripe is configured.
 
-After signing in, `GET /v1/readiness` returns a production readiness checklist without exposing secret values. The web app shows the same checklist in the deployment readiness panel so missing provider credentials, billing settings, public OAuth verification, and app-signing manual gates are visible before launch.
+After signing in, `GET /v1/readiness` returns a production readiness checklist without exposing secret values. The web app shows the same checklist in the deployment readiness panel so missing provider credentials, billing settings, public OAuth verification, and app-signing manual gates are visible before launch. Manual launch attestations require both the boolean flag and a non-secret evidence marker, for example `NOCLICK_GOOGLE_OAUTH_VERIFIED=true` plus `NOCLICK_GOOGLE_OAUTH_VERIFICATION_EVIDENCE=approved-2026-05-12`.
 
 For packaged Android and Windows builds, set `VITE_NOCLICK_SERVER_BASE_URL` before `npm run android:sync` or `npm run desktop:dist`. Browser deployments can use same-origin API routing, but packaged apps run from a local WebView or `file://` origin and need a production HTTPS API default.
 
@@ -149,9 +152,9 @@ Strict mode exits with a failure if `/v1/readiness` still reports any launch-blo
 
 Some external gates cannot be verified by the web server. After completing them in the provider console or signing workflow, attest them with Vercel Production environment variables:
 
-- `NOCLICK_GOOGLE_OAUTH_VERIFIED=true`: Google OAuth app verification is complete.
-- `NOCLICK_ANDROID_RELEASE_SIGNED=true`: a signed Android AAB has been built, verified, and uploaded to Play Console.
-- `NOCLICK_WINDOWS_CODE_SIGNED=true`: the Windows installer has a valid trusted Authenticode signature.
+- `NOCLICK_GOOGLE_OAUTH_VERIFIED=true` and `NOCLICK_GOOGLE_OAUTH_VERIFICATION_EVIDENCE`: Google OAuth app verification is complete and has a non-secret approval marker.
+- `NOCLICK_ANDROID_RELEASE_SIGNED=true` and `NOCLICK_ANDROID_RELEASE_EVIDENCE`: a signed Android AAB has been built, verified, uploaded to Play Console, and recorded with a non-secret release marker.
+- `NOCLICK_WINDOWS_CODE_SIGNED=true` and `NOCLICK_WINDOWS_CODE_SIGNING_EVIDENCE`: the Windows installer has a valid trusted Authenticode signature and a non-secret signer/thumbprint marker.
 
 ## GitHub Actions App Packages
 

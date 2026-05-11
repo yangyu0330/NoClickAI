@@ -1108,6 +1108,27 @@ function envConfiguredItem(name, category, label, detail = '') {
   )
 }
 
+function attestedManualItem({ id, category, label, flagName, evidenceName, missingDetail, readyDetail, action }) {
+  const attested = envFlag(flagName)
+  const evidenceConfigured = envPresent(evidenceName)
+  const ready = attested && evidenceConfigured
+  const detail = ready
+    ? readyDetail
+    : attested
+      ? `${flagName}=true is set, but ${evidenceName} is missing.`
+      : missingDetail
+
+  return readinessItem(
+    id,
+    category,
+    label,
+    ready ? 'ready' : 'manual',
+    detail,
+    ready ? '' : action,
+    { launchBlocking: !ready },
+  )
+}
+
 function errorDetailsReadinessItem() {
   return readinessItem(
     'NOCLICK_EXPOSE_ERROR_DETAILS',
@@ -1377,10 +1398,6 @@ function connectorReadinessItems(store, userId) {
 }
 
 async function productionReadinessReport(store, userId) {
-  const googleOAuthVerified = envFlag('NOCLICK_GOOGLE_OAUTH_VERIFIED')
-  const androidReleaseSigned = envFlag('NOCLICK_ANDROID_RELEASE_SIGNED')
-  const windowsCodeSigned = envFlag('NOCLICK_WINDOWS_CODE_SIGNED')
-
   const items = [
     envConfiguredItem('OPENAI_API_KEY', 'core', 'OpenAI API key'),
     envConfiguredItem('DATABASE_URL', 'core', 'Postgres database'),
@@ -1405,19 +1422,17 @@ async function productionReadinessReport(store, userId) {
       ALLOWED_ORIGIN && ALLOWED_ORIGIN !== '*' ? '' : 'Set NOCLICK_ALLOWED_ORIGIN to the production app URL before public launch.',
       { launchBlocking: !(ALLOWED_ORIGIN && ALLOWED_ORIGIN !== '*') },
     ),
-    readinessItem(
-      'GOOGLE_OAUTH_VERIFICATION',
-      'google',
-      'Google OAuth public verification',
-      googleOAuthVerified ? 'ready' : 'manual',
-      googleOAuthVerified
-        ? 'Google OAuth verification is attested by NOCLICK_GOOGLE_OAUTH_VERIFIED.'
-        : 'Google Console verification status cannot be checked from this server.',
-      googleOAuthVerified
-        ? ''
-        : 'Before public launch, complete Google OAuth app verification, then set NOCLICK_GOOGLE_OAUTH_VERIFIED=true in Vercel Production.',
-      { launchBlocking: !googleOAuthVerified },
-    ),
+    attestedManualItem({
+      id: 'GOOGLE_OAUTH_VERIFICATION',
+      category: 'google',
+      label: 'Google OAuth public verification',
+      flagName: 'NOCLICK_GOOGLE_OAUTH_VERIFIED',
+      evidenceName: 'NOCLICK_GOOGLE_OAUTH_VERIFICATION_EVIDENCE',
+      missingDetail: 'Google Console verification status cannot be checked from this server.',
+      readyDetail: 'Google OAuth verification is attested and an evidence marker is configured.',
+      action:
+        'Before public launch, complete Google OAuth app verification, then set NOCLICK_GOOGLE_OAUTH_VERIFIED=true and NOCLICK_GOOGLE_OAUTH_VERIFICATION_EVIDENCE in Vercel Production.',
+    }),
     readinessItem(
       'GMAIL_SCOPE_MODE',
       'google',
@@ -1444,32 +1459,28 @@ async function productionReadinessReport(store, userId) {
       REQUIRE_SUBSCRIPTION ? '' : 'Set NOCLICK_REQUIRE_SUBSCRIPTION=true when paid access should be required.',
       { launchBlocking: !REQUIRE_SUBSCRIPTION },
     ),
-    readinessItem(
-      'ANDROID_RELEASE_SIGNING',
-      'apps',
-      'Android release signing',
-      androidReleaseSigned ? 'ready' : 'manual',
-      androidReleaseSigned
-        ? 'Android signed release is attested by NOCLICK_ANDROID_RELEASE_SIGNED.'
-        : 'Android Play signing cannot be verified from the web server.',
-      androidReleaseSigned
-        ? ''
-        : 'Build and verify a signed AAB, upload it to Play Console, then set NOCLICK_ANDROID_RELEASE_SIGNED=true in Vercel Production.',
-      { launchBlocking: !androidReleaseSigned },
-    ),
-    readinessItem(
-      'WINDOWS_CODE_SIGNING',
-      'apps',
-      'Windows installer code signing',
-      windowsCodeSigned ? 'ready' : 'manual',
-      windowsCodeSigned
-        ? 'Windows code signing is attested by NOCLICK_WINDOWS_CODE_SIGNED.'
-        : 'Windows code-signing certificate cannot be verified from the web server.',
-      windowsCodeSigned
-        ? ''
-        : 'Configure electron-builder signing credentials, verify the installer signature, then set NOCLICK_WINDOWS_CODE_SIGNED=true in Vercel Production.',
-      { launchBlocking: !windowsCodeSigned },
-    ),
+    attestedManualItem({
+      id: 'ANDROID_RELEASE_SIGNING',
+      category: 'apps',
+      label: 'Android release signing',
+      flagName: 'NOCLICK_ANDROID_RELEASE_SIGNED',
+      evidenceName: 'NOCLICK_ANDROID_RELEASE_EVIDENCE',
+      missingDetail: 'Android Play signing cannot be verified from the web server.',
+      readyDetail: 'Android signed release is attested and an evidence marker is configured.',
+      action:
+        'Build and verify a signed AAB, upload it to Play Console, then set NOCLICK_ANDROID_RELEASE_SIGNED=true and NOCLICK_ANDROID_RELEASE_EVIDENCE in Vercel Production.',
+    }),
+    attestedManualItem({
+      id: 'WINDOWS_CODE_SIGNING',
+      category: 'apps',
+      label: 'Windows installer code signing',
+      flagName: 'NOCLICK_WINDOWS_CODE_SIGNED',
+      evidenceName: 'NOCLICK_WINDOWS_CODE_SIGNING_EVIDENCE',
+      missingDetail: 'Windows code-signing certificate cannot be verified from the web server.',
+      readyDetail: 'Windows code signing is attested and an evidence marker is configured.',
+      action:
+        'Configure electron-builder signing credentials, verify the installer signature, then set NOCLICK_WINDOWS_CODE_SIGNED=true and NOCLICK_WINDOWS_CODE_SIGNING_EVIDENCE in Vercel Production.',
+    }),
   ]
 
   const summary = {

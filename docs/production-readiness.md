@@ -40,6 +40,7 @@
    - 테스트 모드에서는 사용할 Google 계정을 test user로 추가해야 합니다.
    - 공개 상용 서비스 전에는 Google OAuth app verification을 완료해야 합니다.
    - 검증 완료 후 `NOCLICK_GOOGLE_OAUTH_VERIFIED=true`를 Vercel Production에 설정합니다.
+   - `NOCLICK_GOOGLE_OAUTH_VERIFICATION_EVIDENCE`에는 승인 날짜나 내부 티켓처럼 비밀이 아닌 증거 표식을 설정합니다.
    - 기본 공개 범위는 Gmail send-only입니다. `gmail.compose`는 제한 범위이므로 필요한 경우에만 `NOCLICK_ENABLE_GMAIL_DRAFTS=true`를 사용합니다.
 
 3. Stripe 결제
@@ -63,7 +64,9 @@
    - 공개 배포 전 다운로드 페이지와 GitHub release asset이 일치하는지 확인합니다.
    - GitHub Actions `Build App Packages` 워크플로는 signing secret이 준비되면 APK/AAB/Windows 설치 파일과 checksum을 만들 수 있습니다.
    - signed AAB 검증/업로드 후 `NOCLICK_ANDROID_RELEASE_SIGNED=true`를 설정합니다.
+   - `NOCLICK_ANDROID_RELEASE_EVIDENCE`에는 Play Console 릴리스/검증 표식을 설정합니다.
    - Windows installer Authenticode 검증 후 `NOCLICK_WINDOWS_CODE_SIGNED=true`를 설정합니다.
+   - `NOCLICK_WINDOWS_CODE_SIGNING_EVIDENCE`에는 signer/thumbprint 검증 표식을 설정합니다.
 
 ## 검증 명령
 
@@ -142,11 +145,11 @@ High 작업은 실행 전에 반드시 승인 상태가 되어야 하며, 승인
 - Stripe live secret, recurring Price ID, webhook secret 설정
 - `NOCLICK_REQUIRE_SUBSCRIPTION=true` 설정
 - Google OAuth 공개 검증
-- `NOCLICK_GOOGLE_OAUTH_VERIFIED=true` 설정
+- `NOCLICK_GOOGLE_OAUTH_VERIFIED=true`와 `NOCLICK_GOOGLE_OAUTH_VERIFICATION_EVIDENCE` 설정
 - Android signed AAB 및 Play Console 검토
-- `NOCLICK_ANDROID_RELEASE_SIGNED=true` 설정
+- `NOCLICK_ANDROID_RELEASE_SIGNED=true`와 `NOCLICK_ANDROID_RELEASE_EVIDENCE` 설정
 - Windows 코드 서명 인증서
-- `NOCLICK_WINDOWS_CODE_SIGNED=true` 설정
+- `NOCLICK_WINDOWS_CODE_SIGNED=true`와 `NOCLICK_WINDOWS_CODE_SIGNING_EVIDENCE` 설정
 - 선택 사항: Notion/Slack/Telegram/Kakao 직접 API 전송 자격증명
 
 이 항목들이 완료되기 전에도 어드민 계정과 prepared fallback 중심의 내부 운영은 가능합니다.
