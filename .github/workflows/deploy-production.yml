@@ -78,6 +78,9 @@ jobs:
       - name: Check billing smoke syntax
         run: node --check scripts/billing-webhook-smoke.mjs
 
+      - name: Check readiness smoke syntax
+        run: node --check scripts/readiness-smoke.mjs
+
       - name: Dependency audit
         run: npm audit --audit-level=high
 
@@ -133,6 +136,9 @@ jobs:
 
       - name: Billing webhook smoke
         run: npm run test:billing
+
+      - name: Readiness smoke
+        run: npm run test:readiness
 
       - name: Build app
         run: npm run build

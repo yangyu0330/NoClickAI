@@ -80,15 +80,22 @@ Validate before committing:
 npm run lint
 npm run build
 npm run test:billing
+npm run test:readiness
 npm run test:e2e
 ```
 
-The GitHub Actions CI workflow runs `npm ci`, server syntax checks, audit-script syntax checks, high-severity dependency audit, lint, build, local billing webhook smoke, and a Playwright smoke test on pushes to `main` and pull requests.
+The GitHub Actions CI workflow runs `npm ci`, server syntax checks, audit-script syntax checks, high-severity dependency audit, lint, build, local billing webhook smoke, local readiness smoke, and a Playwright smoke test on pushes to `main` and pull requests.
 
 The local billing smoke starts an isolated sync server with subscription enforcement enabled, rejects an unsigned Stripe webhook, applies signed checkout, past-due, payment-recovery, and deletion events, and verifies paid routes open and close with the Stripe subscription state:
 
 ```bash
 npm run test:billing
+```
+
+The readiness smoke starts isolated local sync servers and verifies launch-blocking readiness rules for manual evidence attestations, live Stripe key prefixes, and the exact Google OAuth redirect URI:
+
+```bash
+npm run test:readiness
 ```
 
 Run the same browser smoke against the deployed app:
