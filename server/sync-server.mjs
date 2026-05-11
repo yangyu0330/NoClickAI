@@ -1697,6 +1697,10 @@ function isSimpleGmailSend(prompt) {
   return wantsGmailSend(text) && !mentionsOtherApp
 }
 
+function wantsKakaoShare(prompt) {
+  return /kakao|kakaotalk|\uCE74\uCE74\uC624|\uCE74\uD1A1|\uCE74\uCE74\uC624\uD1A1/i.test(String(prompt || ''))
+}
+
 function extractFirstEmail(value) {
   return String(value || '').match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] || ''
 }
@@ -1895,8 +1899,49 @@ function createGmailSendRun(userId, prompt) {
   }
 }
 
+function createKakaoShareRun(userId, prompt) {
+  const normalized = String(prompt || '').trim()
+  const steps = [
+    sanitizeStep(
+      {
+        title: 'KakaoTalk 공유 텍스트 준비',
+        provider: 'kakao',
+        action: 'kakao.share_text',
+        detail: 'KakaoTalk 직접 API 전송 대신 Android 공유창 또는 클립보드 fallback으로 보낼 텍스트를 준비합니다.',
+        preview: normalized,
+        risk: 'low',
+        input: {
+          title: '',
+          description: '',
+          when: '',
+          to: '',
+          subject: '',
+          body: normalized,
+          channel: '',
+          parentPageId: '',
+          chatId: '',
+        },
+      },
+      0,
+      normalized,
+    ),
+  ]
+
+  return {
+    id: `run_${crypto.randomBytes(10).toString('hex')}`,
+    userId,
+    prompt: normalized,
+    status: 'ready',
+    assistantMessage: 'KakaoTalk 공유용 텍스트를 준비했습니다. 실행 후 공유 버튼으로 Android 공유창이나 클립보드 fallback을 사용할 수 있습니다.',
+    steps,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }
+}
+
 async function createAiRun(user, prompt) {
   const userId = user.id
+  if (wantsKakaoShare(prompt)) return createKakaoShareRun(userId, prompt)
   if (isSimpleGmailSend(prompt)) return createGmailSendRun(userId, prompt)
   if (!OPENAI_API_KEY) return createFallbackRun(userId, prompt)
 
