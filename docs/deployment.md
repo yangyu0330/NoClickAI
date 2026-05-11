@@ -14,7 +14,7 @@ NOCLICK_ALLOWED_ORIGIN=https://app.your-domain.example
 VITE_NOCLICK_SERVER_BASE_URL=https://api.your-domain.example
 NOCLICK_RELEASE_TAG=v0.1.0-internal.1
 NOCLICK_REQUIRE_SUBSCRIPTION=true
-NOCLICK_TOKEN_ENCRYPTION_KEY=replace-with-long-token-encryption-secret
+NOCLICK_TOKEN_ENCRYPTION_KEY=replace-with-long-token-encryption-secret-that-is-not-the-sync-token
 OPENAI_API_KEY=sk-...
 NOCLICK_OPENAI_MODEL=gpt-5-nano
 

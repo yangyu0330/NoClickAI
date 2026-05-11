@@ -996,6 +996,26 @@ function envConfiguredItem(name, category, label, detail = '') {
   )
 }
 
+function tokenEncryptionKeyReadinessItem() {
+  const configured = envPresent('NOCLICK_TOKEN_ENCRYPTION_KEY')
+  const separateFromSyncToken = TOKEN_ENCRYPTION_KEY && TOKEN_ENCRYPTION_KEY !== SYNC_TOKEN
+  const ready = configured && separateFromSyncToken
+
+  return readinessItem(
+    'NOCLICK_TOKEN_ENCRYPTION_KEY',
+    'core',
+    'OAuth token encryption key',
+    ready ? 'ready' : 'missing',
+    ready
+      ? 'NOCLICK_TOKEN_ENCRYPTION_KEY is explicitly configured and separate from NOCLICK_SYNC_TOKEN.'
+      : configured
+        ? 'NOCLICK_TOKEN_ENCRYPTION_KEY must be different from NOCLICK_SYNC_TOKEN.'
+        : 'NOCLICK_TOKEN_ENCRYPTION_KEY is missing.',
+    ready ? '' : 'Set NOCLICK_TOKEN_ENCRYPTION_KEY to a long random secret that is not reused as NOCLICK_SYNC_TOKEN.',
+    { launchBlocking: !ready },
+  )
+}
+
 function releaseAssetUrl(asset) {
   return `${RELEASE_BASE_URL}/${asset.fileName}`
 }
@@ -1241,6 +1261,7 @@ async function productionReadinessReport(store, userId) {
     envConfiguredItem('OPENAI_API_KEY', 'core', 'OpenAI API key'),
     envConfiguredItem('DATABASE_URL', 'core', 'Postgres database'),
     envConfiguredItem('NOCLICK_ADMIN_EMAILS', 'core', 'Admin email allowlist'),
+    tokenEncryptionKeyReadinessItem(),
     readinessItem(
       'NOCLICK_SYNC_TOKEN',
       'core',
