@@ -17,6 +17,11 @@ on:
         required: false
         type: string
         default: https://noclickai-zeta.vercel.app
+      strict_launch:
+        description: Fail production audit unless all public-launch readiness gates are clear
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: deploy-production
@@ -95,6 +100,7 @@ jobs:
           NOCLICK_AUDIT_EMAIL: ${{ secrets.NOCLICK_AUDIT_EMAIL }}
           NOCLICK_AUDIT_PASSWORD: ${{ secrets.NOCLICK_AUDIT_PASSWORD }}
           NOCLICK_AUDIT_TOKEN: ${{ secrets.NOCLICK_AUDIT_TOKEN }}
+          NOCLICK_AUDIT_STRICT_LAUNCH: ${{ inputs.strict_launch }}
 
       - name: Check production error logs
         if: always()

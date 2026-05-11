@@ -4,12 +4,17 @@ import crypto from 'node:crypto'
 
 const DEFAULT_BASE_URL = 'https://noclickai-zeta.vercel.app'
 
+function parseBoolean(value) {
+  return ['1', 'true', 'yes', 'on'].includes(String(value || '').toLowerCase())
+}
+
 function parseArgs(argv) {
   const args = {
     baseUrl: process.env.NOCLICK_AUDIT_BASE_URL || DEFAULT_BASE_URL,
     email: process.env.NOCLICK_AUDIT_EMAIL || '',
     password: process.env.NOCLICK_AUDIT_PASSWORD || '',
     token: process.env.NOCLICK_AUDIT_TOKEN || '',
+    strictLaunch: parseBoolean(process.env.NOCLICK_AUDIT_STRICT_LAUNCH),
   }
 
   for (let index = 2; index < argv.length; index += 1) {
@@ -48,6 +53,18 @@ function parseArgs(argv) {
     }
     if (arg.startsWith('--token=')) {
       args.token = arg.slice('--token='.length)
+      continue
+    }
+    if (arg === '--strict-launch') {
+      args.strictLaunch = true
+      continue
+    }
+    if (arg === '--no-strict-launch') {
+      args.strictLaunch = false
+      continue
+    }
+    if (arg.startsWith('--strict-launch=')) {
+      args.strictLaunch = parseBoolean(arg.slice('--strict-launch='.length))
     }
   }
 
@@ -205,6 +222,21 @@ function summarizeReadiness(readiness) {
   }
 }
 
+function assertStrictLaunchReady(readiness) {
+  if (readiness.productionReady) {
+    resultLine('PASS', 'strict launch readiness', 'productionReady=true')
+    return
+  }
+
+  const blockers = (readiness.items || []).filter((item) => item.status !== 'ready')
+  const blockerSummary = blockers
+    .slice(0, 8)
+    .map((item) => `${item.category}:${item.id}=${item.status}`)
+    .join('; ')
+  const remaining = blockers.length > 8 ? `; +${blockers.length - 8} more` : ''
+  throw new Error(`strict launch readiness failed: ${blockers.length} blocker(s) remain: ${blockerSummary}${remaining}`)
+}
+
 async function checkReadiness(baseUrl, account) {
   const { response, body } = await fetchJson(`${baseUrl}/v1/readiness`, {
     headers: { Authorization: `Bearer ${account.token}` },
@@ -238,6 +270,7 @@ async function checkReadiness(baseUrl, account) {
 
   resultLine('PASS', '/v1/readiness', 'public review pages and release assets are ready')
   summarizeReadiness(body)
+  return body
 }
 
 async function checkBillingFlow(baseUrl, account) {
@@ -428,10 +461,13 @@ async function checkHighRiskApprovalGate(baseUrl, account) {
 }
 
 async function main() {
-  const { baseUrl, email, password, token } = parseArgs(process.argv)
+  const { baseUrl, email, password, token, strictLaunch } = parseArgs(process.argv)
   let account = null
 
   console.log(`NoClick AI production audit: ${baseUrl}`)
+  if (strictLaunch) {
+    resultLine('INFO', 'strict launch mode', 'enabled')
+  }
 
   try {
     const health = await fetchJson(`${baseUrl}/health`)
@@ -452,7 +488,7 @@ async function main() {
     } else {
       account = { ...(await createAuditAccount(baseUrl)), temporary: true }
     }
-    await checkReadiness(baseUrl, account)
+    const readiness = await checkReadiness(baseUrl, account)
     await checkBillingFlow(baseUrl, account)
     await checkSubscriptionGate(baseUrl, health.body, account)
     await checkPreparedAutomation(baseUrl, account, 'notion', 'notion.prepare_page', 'content_prepared', 'Prepare a Notion page draft')
@@ -460,6 +496,9 @@ async function main() {
     await checkTelegramShareAutomation(baseUrl, account)
     await checkKakaoShareAutomation(baseUrl, account)
     await checkHighRiskApprovalGate(baseUrl, account)
+    if (strictLaunch) {
+      assertStrictLaunchReady(readiness)
+    }
   } finally {
     if (account?.temporary) {
       await deleteAuditAccount(baseUrl, account)

@@ -100,6 +100,18 @@ Optional audit secrets:
 
 Use an admin or paid audit account when `NOCLICK_REQUIRE_SUBSCRIPTION=true`. If subscription enforcement is disabled, the audit can create and delete a temporary account.
 
+For the final public-launch gate, run the same audit in strict mode:
+
+```bash
+npm run audit:production -- --strict-launch
+```
+
+Or set this in GitHub Actions when running `CI` or `Deploy Production` manually:
+
+- `strict_launch=true`
+
+Strict mode exits with a failure if `/v1/readiness` still reports any missing, warning, or manual item. Keep it disabled for ordinary internal deployment checks while Stripe, OAuth verification, and app-signing gates are intentionally incomplete.
+
 ## GitHub Actions App Packages
 
 The repository includes a manual `Build App Packages` workflow. It builds:
