@@ -45,13 +45,18 @@ function stripeSignature(rawBody) {
 }
 
 async function fetchJson(path, options = {}) {
-  const response = await fetch(`${BASE_URL}${path}`, {
-    ...options,
-    headers: {
-      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-      ...(options.headers || {}),
-    },
-  })
+  let response
+  try {
+    response = await fetch(`${BASE_URL}${path}`, {
+      ...options,
+      headers: {
+        ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+        ...(options.headers || {}),
+      },
+    })
+  } catch (error) {
+    fail(`fetch ${path} failed: ${error instanceof Error ? error.message : 'unknown'}\nServer output:\n${serverOutput.join('')}`)
+  }
   const body = await response.json().catch(() => ({}))
   return { response, body }
 }
@@ -127,8 +132,9 @@ async function main() {
     assert(token && userId, '/v1/auth/register did not return a token and user id')
     const authHeaders = { Authorization: `Bearer ${token}` }
 
-    const blockedReadiness = await fetchJson('/v1/readiness', { headers: authHeaders })
-    assert(blockedReadiness.response.status === 402, 'free account was not blocked when subscription enforcement is enabled')
+    const paidRoute = `/v1/state?workspaceId=${encodeURIComponent(userId)}`
+    const blockedState = await fetchJson(paidRoute, { headers: authHeaders })
+    assert(blockedState.response.status === 402, 'free account was not blocked when subscription enforcement is enabled')
 
     const unsignedWebhook = await fetchJson('/v1/billing/webhook', {
       method: 'POST',
@@ -166,8 +172,9 @@ async function main() {
     assert(paidStatus.body.user?.billingPlan === 'pro', `expected billingPlan=pro, got ${paidStatus.body.user?.billingPlan}`)
     assert(paidStatus.body.user?.subscriptionStatus === 'active', `expected subscriptionStatus=active, got ${paidStatus.body.user?.subscriptionStatus}`)
 
-    const allowedReadiness = await fetchJson('/v1/readiness', { headers: authHeaders })
-    assert(allowedReadiness.response.ok, `paid account readiness returned HTTP ${allowedReadiness.response.status}`)
+    const allowedState = await fetchJson(paidRoute, { headers: authHeaders })
+    assert(allowedState.response.status === 404, `paid account state route returned HTTP ${allowedState.response.status}`)
+    assert(allowedState.body.error === 'empty_workspace', `paid account state route returned ${allowedState.body.error}`)
 
     const deleteEvent = {
       id: `evt_deleted_${crypto.randomBytes(8).toString('hex')}`,
@@ -192,7 +199,7 @@ async function main() {
       `expected subscriptionStatus=canceled, got ${canceledStatus.body.user?.subscriptionStatus}`,
     )
 
-    const blockedAgain = await fetchJson('/v1/readiness', { headers: authHeaders })
+    const blockedAgain = await fetchJson(paidRoute, { headers: authHeaders })
     assert(blockedAgain.response.status === 402, 'canceled account was not blocked by subscription enforcement')
 
     await fetchJson('/v1/auth/delete-account', {
