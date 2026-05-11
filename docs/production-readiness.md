@@ -84,6 +84,7 @@ npx vercel@latest logs --level error --since 1h --environment production --no-br
 - `/privacy`, `/terms`, `/downloads`, `/data-deletion`
 - 인증된 `/v1/readiness`
 - billing status, checkout, portal의 현재 환경별 동작
+- `NOCLICK_REQUIRE_SUBSCRIPTION=true`일 때 무료 계정의 paid automation API 접근 차단
 - Notion prepared-page 자동화
 - Slack prepared-message 자동화
 - Telegram prepared-message 자동화

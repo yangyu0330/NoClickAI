@@ -144,6 +144,51 @@ async function deleteAuditAccount(baseUrl, account) {
   resultLine('PASS', 'temporary account deleted', 'post-delete /me returned 401')
 }
 
+async function expectSubscriptionRequired(baseUrl, account, path, options = {}) {
+  const response = await fetchJson(`${baseUrl}${path}`, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${account.token}`,
+      ...(options.headers || {}),
+    },
+  })
+
+  assert(response.response.status === 402, `${path} returned HTTP ${response.response.status}; expected 402`)
+  assert(response.body?.error === 'subscription_required', `${path} returned ${response.body?.error}; expected subscription_required`)
+}
+
+async function checkSubscriptionGate(baseUrl, health, auditAccount) {
+  if (!health.requireSubscription) {
+    resultLine('PASS', 'subscription access mode', 'subscription enforcement is disabled')
+    return
+  }
+
+  const status = await fetchJson(`${baseUrl}/v1/billing/status`, {
+    headers: { Authorization: `Bearer ${auditAccount.token}` },
+  })
+  const privilegedAuditAccount = Boolean(
+    status.response.ok &&
+      (status.body?.user?.isAdmin ||
+        status.body?.user?.billingPlan === 'admin' ||
+        ['active', 'trialing'].includes(status.body?.user?.subscriptionStatus)),
+  )
+  assert(privilegedAuditAccount, 'subscription enforcement is enabled; use NOCLICK_AUDIT_EMAIL/PASSWORD or NOCLICK_AUDIT_TOKEN for an admin/pro account')
+
+  const freeAccount = { ...(await createAuditAccount(baseUrl)), temporary: true }
+  try {
+    await expectSubscriptionRequired(baseUrl, freeAccount, '/v1/readiness')
+    await expectSubscriptionRequired(baseUrl, freeAccount, '/v1/connectors')
+    await expectSubscriptionRequired(baseUrl, freeAccount, '/v1/runs')
+    await expectSubscriptionRequired(baseUrl, freeAccount, '/v1/chat', {
+      method: 'POST',
+      body: JSON.stringify({ message: 'Prepare a billing gate audit draft.' }),
+    })
+    resultLine('PASS', 'subscription access gate', 'free account blocked from paid automation APIs')
+  } finally {
+    await deleteAuditAccount(baseUrl, freeAccount)
+  }
+}
+
 function summarizeReadiness(readiness) {
   const summary = readiness.summary || {}
   const counts = [
@@ -383,10 +428,10 @@ async function main() {
   console.log(`NoClick AI production audit: ${baseUrl}`)
 
   try {
-    const { response, body } = await fetchJson(`${baseUrl}/health`)
-    assert(response.ok && body?.ok, `/health returned HTTP ${response.status}`)
-    assert(body.auth && body.chat && body.connectors && body.billing, '/health is missing expected service flags')
-    resultLine('PASS', '/health', `model=${body.model}, storage=${body.storage}`)
+    const health = await fetchJson(`${baseUrl}/health`)
+    assert(health.response.ok && health.body?.ok, `/health returned HTTP ${health.response.status}`)
+    assert(health.body.auth && health.body.chat && health.body.connectors && health.body.billing, '/health is missing expected service flags')
+    resultLine('PASS', '/health', `model=${health.body.model}, storage=${health.body.storage}`)
 
     await checkPublicPage(baseUrl, '/privacy', ['Privacy Policy', 'Google User Data', 'Limited Use', '/data-deletion'])
     await checkPublicPage(baseUrl, '/terms', ['Terms of Service', 'High-Risk Actions'])
@@ -403,6 +448,7 @@ async function main() {
     }
     await checkReadiness(baseUrl, account)
     await checkBillingFlow(baseUrl, account)
+    await checkSubscriptionGate(baseUrl, health.body, account)
     await checkPreparedAutomation(baseUrl, account, 'notion', 'notion.prepare_page', 'content_prepared', 'Prepare a Notion page draft')
     await checkPreparedAutomation(baseUrl, account, 'slack', 'slack.prepare_message', 'share_prepared', 'Prepare a Slack message')
     await checkTelegramShareAutomation(baseUrl, account)
