@@ -946,6 +946,10 @@ function verifyStripeSignature(rawBody, signatureHeader) {
   return parts.signatures.some((signature) => safeEqual(signature, expected))
 }
 
+function billingPlanForSubscriptionStatus(status) {
+  return ['active', 'trialing'].includes(status) ? 'pro' : 'free'
+}
+
 function applyStripeEvent(store, event) {
   if (event.id && store.billingEvents[event.id]) return { duplicate: true }
 
@@ -956,16 +960,18 @@ function applyStripeEvent(store, event) {
   if (user && event.type === 'checkout.session.completed') {
     user.stripeCustomerId = object.customer || user.stripeCustomerId
     user.stripeSubscriptionId = object.subscription || user.stripeSubscriptionId
-    user.subscriptionStatus = object.payment_status === 'paid' || object.status === 'complete' ? 'active' : 'checkout_complete'
-    user.billingPlan = 'pro'
+    const paid = object.payment_status === 'paid' || object.status === 'complete'
+    user.subscriptionStatus = paid ? 'active' : 'checkout_complete'
+    user.billingPlan = paid ? 'pro' : 'free'
     user.billingUpdatedAt = new Date().toISOString()
   }
 
   if (user && event.type === 'customer.subscription.updated') {
     user.stripeSubscriptionId = object.id || user.stripeSubscriptionId
     user.stripeCustomerId = object.customer || user.stripeCustomerId
-    user.subscriptionStatus = object.status || user.subscriptionStatus
-    user.billingPlan = object.status === 'active' || object.status === 'trialing' ? 'pro' : user.billingPlan
+    const nextStatus = object.status || user.subscriptionStatus
+    user.subscriptionStatus = nextStatus
+    user.billingPlan = billingPlanForSubscriptionStatus(nextStatus)
     user.billingUpdatedAt = new Date().toISOString()
   }
 
@@ -988,6 +994,7 @@ function applyStripeEvent(store, event) {
     user.stripeCustomerId = object.customer || user.stripeCustomerId
     user.stripeSubscriptionId = object.subscription || user.stripeSubscriptionId
     user.subscriptionStatus = 'past_due'
+    user.billingPlan = 'free'
     user.billingUpdatedAt = new Date().toISOString()
   }
 

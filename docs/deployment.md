@@ -245,7 +245,7 @@ Before enabling paid access in production, run the local billing smoke test. It 
 npm run test:billing
 ```
 
-The smoke test verifies subscription enforcement, unsigned webhook rejection, signed `checkout.session.completed` processing, duplicate webhook idempotency, signed `customer.subscription.deleted` processing, and re-blocking of canceled accounts.
+The smoke test verifies subscription enforcement, unsigned webhook rejection, signed `checkout.session.completed` processing, duplicate webhook idempotency, past-due blocking, payment recovery, signed `customer.subscription.deleted` processing, and re-blocking of canceled accounts.
 
 ## Android Release Signing
 

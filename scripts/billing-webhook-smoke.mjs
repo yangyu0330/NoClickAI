@@ -176,6 +176,58 @@ async function main() {
     assert(allowedState.response.status === 404, `paid account state route returned HTTP ${allowedState.response.status}`)
     assert(allowedState.body.error === 'empty_workspace', `paid account state route returned ${allowedState.body.error}`)
 
+    const pastDueEvent = {
+      id: `evt_past_due_${crypto.randomBytes(8).toString('hex')}`,
+      type: 'customer.subscription.updated',
+      data: {
+        object: {
+          id: checkoutEvent.data.object.subscription,
+          customer: checkoutEvent.data.object.customer,
+          status: 'past_due',
+        },
+      },
+    }
+
+    const pastDue = await signedWebhook(pastDueEvent)
+    assert(pastDue.response.ok, `/v1/billing/webhook past_due event returned HTTP ${pastDue.response.status}`)
+    assert(pastDue.body.userId === userId, 'past_due subscription webhook did not resolve the local user')
+
+    const pastDueStatus = await fetchJson('/v1/billing/status', { headers: authHeaders })
+    assert(pastDueStatus.body.user?.billingPlan === 'free', `expected billingPlan=free, got ${pastDueStatus.body.user?.billingPlan}`)
+    assert(
+      pastDueStatus.body.user?.subscriptionStatus === 'past_due',
+      `expected subscriptionStatus=past_due, got ${pastDueStatus.body.user?.subscriptionStatus}`,
+    )
+
+    const blockedPastDue = await fetchJson(paidRoute, { headers: authHeaders })
+    assert(blockedPastDue.response.status === 402, 'past_due account was not blocked by subscription enforcement')
+
+    const recoveryEvent = {
+      id: `evt_recovered_${crypto.randomBytes(8).toString('hex')}`,
+      type: 'invoice.payment_succeeded',
+      data: {
+        object: {
+          id: `in_${crypto.randomBytes(8).toString('hex')}`,
+          customer: checkoutEvent.data.object.customer,
+          subscription: checkoutEvent.data.object.subscription,
+        },
+      },
+    }
+
+    const recovered = await signedWebhook(recoveryEvent)
+    assert(recovered.response.ok, `/v1/billing/webhook payment recovery event returned HTTP ${recovered.response.status}`)
+    assert(recovered.body.userId === userId, 'payment recovery webhook did not resolve the local user')
+
+    const recoveredStatus = await fetchJson('/v1/billing/status', { headers: authHeaders })
+    assert(recoveredStatus.body.user?.billingPlan === 'pro', `expected billingPlan=pro, got ${recoveredStatus.body.user?.billingPlan}`)
+    assert(
+      recoveredStatus.body.user?.subscriptionStatus === 'active',
+      `expected subscriptionStatus=active, got ${recoveredStatus.body.user?.subscriptionStatus}`,
+    )
+
+    const allowedAgain = await fetchJson(paidRoute, { headers: authHeaders })
+    assert(allowedAgain.response.status === 404, `recovered account state route returned HTTP ${allowedAgain.response.status}`)
+
     const deleteEvent = {
       id: `evt_deleted_${crypto.randomBytes(8).toString('hex')}`,
       type: 'customer.subscription.deleted',
