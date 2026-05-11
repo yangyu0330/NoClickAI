@@ -192,7 +192,7 @@ function detectDefaultEndpoint() {
 const DEFAULT_ENDPOINT = detectDefaultEndpoint()
 
 const QUICK_PROMPTS = [
-  '내일 오전 10시에 회의 잡고 참석자에게 메일 초안 만들어줘',
+  '내일 오전 10시에 회의 잡고 참석자에게 메일 검토 초안 준비해줘',
   '이번주 팀 과제 현황을 Notion에 정리하고 Slack 공지 초안 만들어줘',
   '다음주 수요일까지 제출할 계획서 준비하고 마감 알림 등록해줘',
 ]
@@ -314,10 +314,16 @@ function LegalPage({ kind }: { kind: 'privacy' | 'terms' }) {
             </p>
             <h2>Google User Data</h2>
             <p>
-              When you connect Google, NoClick AI requests access only for the features shown in the app: creating Calendar events, creating Gmail drafts, sending approved Gmail messages, and reading the Google account email used for the connection.
+              When you connect Google, NoClick AI requests access only for the features shown in the app: creating Calendar events, preparing email review drafts inside NoClick AI, sending approved Gmail messages, and reading the Google account email used for the connection.
             </p>
             <p>
-              Google OAuth tokens are encrypted before storage. Google user data is used only to provide the requested automation features and is not sold or used for advertising.
+              The public default Gmail connection uses the Gmail send-only scope for approved sends. If an operator enables optional Gmail draft mode, NoClick AI may request the Gmail compose scope to create Gmail drafts.
+            </p>
+            <p>
+              Google OAuth tokens are encrypted before storage. Google user data is used only to provide or improve user-facing automation features, is not sold, is not used for advertising, and is not used to train generalized AI models.
+            </p>
+            <p>
+              NoClick AI's use and transfer of information received from Google APIs adheres to the Google API Services User Data Policy, including the Limited Use requirements.
             </p>
             <h2>Data Sharing</h2>
             <p>
@@ -325,7 +331,7 @@ function LegalPage({ kind }: { kind: 'privacy' | 'terms' }) {
             </p>
             <h2>Retention and Deletion</h2>
             <p>
-              Automation history and audit logs are retained to help users review approvals and external actions. Users can disconnect providers from the app, and administrators can delete stored account data on request.
+              Automation history and audit logs are retained to help users review approvals and external actions. Users can disconnect providers from the app to stop new access. Administrators can delete stored account data, OAuth tokens, run history, and audit logs on request.
             </p>
             <h2>Contact</h2>
             <p>For privacy requests, contact the NoClick AI operator at the support address listed in the Google OAuth consent screen.</p>
@@ -377,7 +383,7 @@ function AppShell() {
     readJsonStorage<ChatMessage[]>(STORAGE_KEYS.chatMessages, [
       newMessage(
         'assistant',
-        '무엇을 자동화할까요? 일정, 메일 초안, Notion 페이지, Slack 공지, Telegram 메시지를 한 문장으로 요청하세요.',
+        '무엇을 자동화할까요? 일정, 메일 검토 초안, Notion 페이지, Slack 공지, Telegram 메시지를 한 문장으로 요청하세요.',
       ),
     ]),
   )
@@ -753,7 +759,7 @@ function AppShell() {
               value={input}
               onChange={(event) => setInput(event.target.value)}
               onKeyDown={handleComposerKeyDown}
-              placeholder="예: 내일 오전 10시에 회의 잡고 참석자에게 메일 초안 만들어줘"
+              placeholder="예: 내일 오전 10시에 회의 잡고 참석자에게 메일 검토 초안 준비해줘"
               aria-label="자동화 요청"
             />
             <button type="button" className="send-button" onClick={() => void sendChat()} disabled={isBusy || !input.trim()}>

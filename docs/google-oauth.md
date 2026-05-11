@@ -31,9 +31,19 @@ Add these to the `noclickai` Vercel project Production environment:
 GOOGLE_CLIENT_ID=<client-id-from-google>
 GOOGLE_CLIENT_SECRET=<client-secret-from-google>
 GOOGLE_REDIRECT_URI=https://noclickai-zeta.vercel.app/v1/connectors/google/callback
+NOCLICK_ENABLE_GMAIL_DRAFTS=false
 ```
 
 Then redeploy production.
+
+Default public scope set:
+
+- `openid`
+- `https://www.googleapis.com/auth/userinfo.email`
+- `https://www.googleapis.com/auth/calendar.events`
+- `https://www.googleapis.com/auth/gmail.send`
+
+The default Gmail mode intentionally avoids `https://www.googleapis.com/auth/gmail.compose`, because Google classifies `gmail.compose` as a restricted scope. In default mode, NoClick AI prepares review drafts inside the app and uses Gmail only for approved sends. Set `NOCLICK_ENABLE_GMAIL_DRAFTS=true` only if you plan to complete restricted-scope verification and any required security assessment.
 
 ## 3. App Test
 
@@ -45,10 +55,10 @@ Then redeploy production.
 6. Try:
 
 ```text
-내일 오전 9시에 테스트 회의 일정을 만들고, 나에게 메일 초안을 만들어줘
+내일 오전 9시에 테스트 회의 일정을 만들고, 나에게 메일 검토 초안을 준비해줘
 ```
 
-Approve and execute the run. The expected result is one Google Calendar event and one Gmail draft.
+Approve and execute the run. The expected result is one Google Calendar event and one NoClick AI review draft. If `NOCLICK_ENABLE_GMAIL_DRAFTS=true`, the expected mail result is one Gmail draft instead.
 
 To test actual Gmail sending, use a separate request that explicitly asks to send email, then approve the high-risk step before executing:
 
@@ -61,7 +71,8 @@ The expected result is one Gmail message in the Sent folder. Do not use this tes
 ## Notes
 
 - Calendar and Gmail share one Google OAuth connection.
-- Gmail support can create drafts and can send email when the user explicitly asks for sending. Sending is always high risk and requires approval before execution.
+- Gmail support prepares in-app review drafts by default and can send email when the user explicitly asks for sending. Sending is always high risk and requires approval before execution.
+- Actual Gmail draft creation is optional and disabled by default to avoid requesting the restricted `gmail.compose` scope.
 - For public user access outside test users, Google may require OAuth app verification and policy review.
 
 Official references:

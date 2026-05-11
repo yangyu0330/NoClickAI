@@ -31,6 +31,7 @@ const STRIPE_CANCEL_URL = process.env.STRIPE_CANCEL_URL || `${PUBLIC_APP_URL}?bi
 const STRIPE_PORTAL_RETURN_URL = process.env.STRIPE_PORTAL_RETURN_URL || PUBLIC_APP_URL
 const REQUIRE_SUBSCRIPTION = process.env.NOCLICK_REQUIRE_SUBSCRIPTION === 'true'
 const TOKEN_ENCRYPTION_KEY = process.env.NOCLICK_TOKEN_ENCRYPTION_KEY || SYNC_TOKEN
+const ENABLE_GMAIL_DRAFTS = process.env.NOCLICK_ENABLE_GMAIL_DRAFTS === 'true'
 const ADMIN_EMAILS = new Set(
   String(process.env.NOCLICK_ADMIN_EMAILS || '')
     .split(',')
@@ -46,6 +47,9 @@ const OPENAI_REQUEST_TIMEOUT_MS = Number(process.env.NOCLICK_OPENAI_TIMEOUT_MS |
 const STORE_ID = 'default'
 const STORE_TABLE = 'noclick_store'
 const STORAGE_TARGET = DATABASE_URL ? `postgres:${STORE_TABLE}/${STORE_ID}` : DATA_FILE
+const GMAIL_ACTIONS = ENABLE_GMAIL_DRAFTS
+  ? ['gmail.prepare_message', 'gmail.create_draft', 'gmail.send_message']
+  : ['gmail.prepare_message', 'gmail.send_message']
 const RELEASE_TAG = process.env.NOCLICK_RELEASE_TAG || 'v0.1.0-internal.1'
 const RELEASE_BASE_URL = `https://github.com/yangyu0330/NoClickAI/releases/download/${RELEASE_TAG}`
 const RELEASE_PAGE_URL = `https://github.com/yangyu0330/NoClickAI/releases/tag/${RELEASE_TAG}`
@@ -119,7 +123,7 @@ const CONNECTOR_DEFINITIONS = [
     tokenProvider: 'google',
     name: 'Gmail',
     type: 'oauth',
-    actions: ['gmail.create_draft', 'gmail.send_message'],
+    actions: GMAIL_ACTIONS,
     configured: () => Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
   },
   {
@@ -177,7 +181,8 @@ const OAUTH_PROVIDERS = {
       'openid',
       'https://www.googleapis.com/auth/userinfo.email',
       'https://www.googleapis.com/auth/calendar.events',
-      'https://www.googleapis.com/auth/gmail.compose',
+      'https://www.googleapis.com/auth/gmail.send',
+      ...(ENABLE_GMAIL_DRAFTS ? ['https://www.googleapis.com/auth/gmail.compose'] : []),
     ],
   },
   notion: {
@@ -211,7 +216,7 @@ const OAUTH_PROVIDERS = {
 
 const ALLOWED_ACTIONS = {
   'google-calendar': ['calendar.create_event'],
-  gmail: ['gmail.create_draft', 'gmail.send_message'],
+  gmail: GMAIL_ACTIONS,
   notion: ['notion.create_page'],
   slack: ['slack.post_message'],
   telegram: ['telegram.send_message'],
@@ -1049,6 +1054,16 @@ async function productionReadinessReport(store, userId) {
       'Before public launch, complete Google OAuth app verification or keep the app in Testing with explicit test users.',
     ),
     readinessItem(
+      'GMAIL_SCOPE_MODE',
+      'google',
+      'Gmail OAuth scope mode',
+      ENABLE_GMAIL_DRAFTS ? 'warning' : 'ready',
+      ENABLE_GMAIL_DRAFTS
+        ? 'Gmail draft mode is enabled and requests gmail.compose, a restricted Gmail scope.'
+        : 'Public default uses gmail.send only for Gmail execution and prepares non-send drafts inside NoClick AI.',
+      ENABLE_GMAIL_DRAFTS ? 'Disable NOCLICK_ENABLE_GMAIL_DRAFTS for public launch unless restricted scope verification is planned.' : '',
+    ),
+    readinessItem(
       'PRIVACY_POLICY_URL',
       'legal',
       'Privacy policy URL',
@@ -1441,6 +1456,7 @@ const runSchema = {
             type: 'string',
             enum: [
               'calendar.create_event',
+              'gmail.prepare_message',
               'gmail.create_draft',
               'gmail.send_message',
               'notion.create_page',
@@ -1558,7 +1574,10 @@ function normalizeActionRisk(action, risk) {
 function sanitizeStep(step, index, prompt = '') {
   const provider = ALLOWED_ACTIONS[step.provider] ? step.provider : 'notion'
   let action = ALLOWED_ACTIONS[provider].includes(step.action) ? step.action : ALLOWED_ACTIONS[provider][0]
-  if (provider === 'gmail' && action === 'gmail.create_draft' && wantsGmailSend(prompt)) {
+  if (provider === 'gmail' && action === 'gmail.create_draft' && !ENABLE_GMAIL_DRAFTS) {
+    action = 'gmail.prepare_message'
+  }
+  if (provider === 'gmail' && action !== 'gmail.send_message' && wantsGmailSend(prompt)) {
     action = 'gmail.send_message'
   }
   const risk = normalizeActionRisk(action, ['low', 'medium', 'high', 'blocked'].includes(step.risk) ? step.risk : 'medium')
@@ -1596,6 +1615,8 @@ function createFallbackRun(userId, prompt) {
   const needsMeeting = normalized.includes('회의') || normalized.includes('미팅') || lower.includes('meeting')
   const needsNotice = normalized.includes('공지') || normalized.includes('알림') || normalized.includes('팀')
   const needsMailSend = wantsGmailSend(normalized)
+  const mailAction = needsMailSend ? 'gmail.send_message' : ENABLE_GMAIL_DRAFTS ? 'gmail.create_draft' : 'gmail.prepare_message'
+  const mailDraftTitle = ENABLE_GMAIL_DRAFTS ? '메일 초안 생성' : '메일 검토 초안 준비'
 
   const steps = [
     sanitizeStep(
@@ -1622,11 +1643,15 @@ function createFallbackRun(userId, prompt) {
     ),
     sanitizeStep(
       {
-        title: needsMailSend ? '메일 발송' : needsNotice ? '공지/메일 초안 생성' : '메일 초안 생성',
+        title: needsMailSend ? '메일 발송' : needsNotice ? `공지/${mailDraftTitle}` : mailDraftTitle,
         provider: 'gmail',
-        action: needsMailSend ? 'gmail.send_message' : 'gmail.create_draft',
-        detail: needsMailSend ? '승인 후 Gmail에서 실제 메일을 발송합니다.' : '사용자 검토용 메일 초안을 만듭니다.',
-        preview: `${normalized}\n\n${needsMailSend ? '승인 후 위 내용을 바탕으로 메일을 발송합니다.' : '위 내용을 바탕으로 초안을 작성합니다.'}`,
+        action: mailAction,
+        detail: needsMailSend
+          ? '승인 후 Gmail에서 실제 메일을 발송합니다.'
+          : ENABLE_GMAIL_DRAFTS
+            ? 'Gmail에 사용자 검토용 초안을 만듭니다.'
+            : 'Gmail 제한 범위를 피하기 위해 앱 안에서 검토용 메일 초안을 준비합니다.',
+        preview: `${normalized}\n\n${needsMailSend ? '승인 후 위 내용을 바탕으로 메일을 발송합니다.' : '위 내용을 바탕으로 검토용 초안을 작성합니다.'}`,
         risk: needsMailSend ? 'high' : 'low',
         input: {
           title: '',
@@ -1744,8 +1769,11 @@ async function createAiRun(user, prompt) {
       input: [
         {
           role: 'system',
-          content:
-            'You are NoClick AI. Convert Korean chat requests into safe automation tool calls. Prefer Google Calendar event creation and Gmail draft creation when the request mentions schedules, meetings, invitations, or email drafts. Use gmail.send_message only when the user explicitly asks to send/deliver an email now; otherwise use gmail.create_draft. For calendar steps, put input.when as an ISO 8601 date-time with timezone. For Gmail steps, put input.to as an email address; if the user says "나에게", "내게", "본인에게", "me", or "myself", use the current user email. Never execute payment, transfer, account deletion, password change, or mass personal data submission; mark those steps blocked. Gmail sending and high-risk message sending require approval.',
+          content: `You are NoClick AI. Convert Korean chat requests into safe automation tool calls. Prefer Google Calendar event creation and ${
+            ENABLE_GMAIL_DRAFTS ? 'Gmail draft creation with gmail.create_draft' : 'NoClick AI email review drafts with gmail.prepare_message'
+          } when the request mentions schedules, meetings, invitations, or email drafts. Use gmail.send_message only when the user explicitly asks to send/deliver an email now; otherwise use ${
+            ENABLE_GMAIL_DRAFTS ? 'gmail.create_draft' : 'gmail.prepare_message'
+          }. For calendar steps, put input.when as an ISO 8601 date-time with timezone. For Gmail steps, put input.to as an email address; if the user says "나에게", "내게", "본인에게", "me", or "myself", use the current user email. Never execute payment, transfer, account deletion, password change, or mass personal data submission; mark those steps blocked. Gmail sending and high-risk message sending require approval.`,
         },
         {
           role: 'user',
@@ -2056,6 +2084,7 @@ async function executeGoogleCalendar(store, run, step) {
 }
 
 async function executeGmailDraft(store, run, step) {
+  if (!ENABLE_GMAIL_DRAFTS) return executeGmailPrepared(store, run, step)
   const connection = await refreshGoogleTokenIfNeeded(store, run.userId)
   if (!connection?.accessToken) return executionFailure('connection_required', 'Gmail 연결이 필요합니다.')
   const recipient = resolveGmailRecipient(store, run, step)
@@ -2075,6 +2104,17 @@ async function executeGmailDraft(store, run, step) {
     body: JSON.stringify({ message: { raw } }),
   })
   return { ok: true, message: 'Gmail 초안이 생성되었습니다.', externalId: draft.id }
+}
+
+async function executeGmailPrepared(_store, run, step) {
+  const subject = step.input.subject || step.title
+  const body = step.input.body || step.input.description || step.preview || run.prompt
+  const recipient = resolveGmailRecipient(_store, run, step)
+  return {
+    ok: true,
+    message: '검토용 메일 초안이 NoClick AI 안에 준비되었습니다.',
+    shareText: [`To: ${recipient || '(recipient needed)'}`, `Subject: ${subject}`, '', body].join('\n'),
+  }
 }
 
 async function executeGmailSend(store, run, step) {
@@ -2247,7 +2287,8 @@ function needsHighRiskExecutionConfirmation(run) {
 async function executeStep(store, run, step) {
   if (step.provider === 'google-calendar') return executeGoogleCalendar(store, run, step)
   if (step.provider === 'gmail' && step.action === 'gmail.send_message') return executeGmailSend(store, run, step)
-  if (step.provider === 'gmail') return executeGmailDraft(store, run, step)
+  if (step.provider === 'gmail' && step.action === 'gmail.create_draft') return executeGmailDraft(store, run, step)
+  if (step.provider === 'gmail') return executeGmailPrepared(store, run, step)
   if (step.provider === 'notion') return executeNotionPage(store, run, step)
   if (step.provider === 'slack') return executeSlackMessage(store, run, step)
   if (step.provider === 'telegram') return executeTelegramMessage(store, run, step)
@@ -2502,6 +2543,7 @@ export async function handleRequest(request, response) {
       serverKeyConfigured: Boolean(OPENAI_API_KEY),
       databaseConfigured: Boolean(DATABASE_URL),
       adminConfigured: ADMIN_EMAILS.size > 0,
+      gmailDraftsEnabled: ENABLE_GMAIL_DRAFTS,
       stripeConfigured: stripeConfigured(),
       stripeWebhookConfigured: Boolean(STRIPE_WEBHOOK_SECRET),
       requireSubscription: REQUIRE_SUBSCRIPTION,

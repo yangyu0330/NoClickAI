@@ -62,14 +62,16 @@
       <p>We process account email addresses, session tokens, automation prompts, run history, audit logs, connector status, and OAuth tokens needed to perform approved actions.</p>
 
       <h2>Google User Data</h2>
-      <p>When you connect Google, NoClick AI requests access only for the features shown in the app: creating Calendar events, creating Gmail drafts, sending approved Gmail messages, and reading the Google account email used for the connection.</p>
-      <p>Google OAuth tokens are encrypted before storage. Google user data is used only to provide the requested automation features and is not sold or used for advertising.</p>
+      <p>When you connect Google, NoClick AI requests access only for the features shown in the app: creating Calendar events, preparing email review drafts inside NoClick AI, sending approved Gmail messages, and reading the Google account email used for the connection.</p>
+      <p>The public default Gmail connection uses the Gmail send-only scope for approved sends. If an operator enables optional Gmail draft mode, NoClick AI may request the Gmail compose scope to create Gmail drafts.</p>
+      <p>Google OAuth tokens are encrypted before storage. Google user data is used only to provide or improve user-facing automation features, is not sold, is not used for advertising, and is not used to train generalized AI models.</p>
+      <p>NoClick AI's use and transfer of information received from Google APIs adheres to the Google API Services User Data Policy, including the Limited Use requirements.</p>
 
       <h2>Data Sharing</h2>
       <p>We send data to connected services only when needed to complete user-approved actions. We also use infrastructure providers such as Vercel, Neon Postgres, OpenAI, and Stripe when those services are configured for hosting, storage, AI planning, and billing.</p>
 
       <h2>Retention and Deletion</h2>
-      <p>Automation history and audit logs are retained to help users review approvals and external actions. Users can disconnect providers from the app, and administrators can delete stored account data on request.</p>
+      <p>Automation history and audit logs are retained to help users review approvals and external actions. Users can disconnect providers from the app to stop new access. Administrators can delete stored account data, OAuth tokens, run history, and audit logs on request.</p>
 
       <h2>Contact</h2>
       <p>For privacy requests, contact the NoClick AI operator through the support address configured in the Google OAuth consent screen.</p>
